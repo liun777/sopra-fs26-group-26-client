@@ -1,3 +1,6 @@
+/* ============================================
+   ROOT & THEME
+   ============================================ */
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -10,8 +13,10 @@
   }
 }
 
-html,
-body {
+/* ============================================
+   BASE STYLES
+   ============================================ */
+html, body {
   max-width: 100vw;
   overflow-x: hidden;
 }
@@ -41,16 +46,37 @@ a {
   }
 }
 
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+h1 {
+  color: #e8a87c;
+}
+
+/* ============================================
+   BACKGROUND
+   ============================================ */
+.cabo-background {
+  background-image: url('/background.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ============================================
+   CONTAINERS
+   ============================================ */
 .login-container {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background-color: rgb(41, 44, 59);
-}
-
-.login-button {
-  width: 100%;
+  background-color: transparent;
 }
 
 .card-container {
@@ -58,5 +84,160 @@ a {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background-color: rgb(41, 44, 59);
+  background-color: transparent;
+}
+
+.form-card {
+  background: rgba(58, 58, 58, 0.75);
+  padding: 40px;
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 400px;
+  backdrop-filter: blur(5px);
+}
+
+.dashboard-container {
+  width: 500px;
+  pointer-events: all;
+  background-color: rgba(58, 58, 58, 0.75) !important;
+  border-color: #3a3a3a !important;
+  border-radius: 20px;
+  color: white;
+  backdrop-filter: blur(5px);
+}
+
+.dashboard-container .ant-card-body {
+  background-color: transparent !important;
+  border-radius: 20px;
+}
+
+.dashboard-container .ant-card-head-title {
+  color: #e8a87c !important;
+  font-weight: bold;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+
+/* Login Button - full width */
+.login-button {
+  width: 100%;
+}
+
+/* Primary Buttons (orange) - "Spy on users", "Login", "Register" */
+.ant-btn-primary {
+  background-color: #e8a87c !important;
+  border-color: #e8a87c !important;
+  color: white !important;
+}
+
+/* Primary Button hover - darker orange */
+.ant-btn-primary:hover {
+  background-color: #c4827a !important;
+  border-color: #c4827a !important;
+}
+
+/* Default Buttons (orange outline) -"Change Password" */
+.ant-btn-default {
+  color: #d4845a !important;
+  border-color: #d4845a !important;
+}
+
+/* Default Button hover - darker border */
+.ant-btn-default:hover {
+  color: #b10660 !important;
+  border-color: #c4827a !important;
+}
+
+/* Link Buttons (olive green) -  "Logout" */
+.ant-btn-link {
+  color: #a8b87a !important;
+}
+
+/* Link Button hover - lighter olive green + bold */
+.ant-btn-link:hover {
+  color: #d4e4a8 !important;
+  font-weight: bold !important;
+}
+
+/* Link Buttons inside form cards (olive green) - "Register here!", "Login here!" */
+.form-card .ant-btn-link {
+  color: #a8b87a !important;
+  text-decoration: underline !important;
+  font-weight: normal !important;
+}
+
+/* Form card link button hover - lighter olive green + bold */
+.form-card .ant-btn-link:hover {
+  color: #d4e4a8 !important;
+  font-weight: bold !important;
+}
+
+/* Back navigation link - muted blue, underlined */
+.back-link {
+    cursor: pointer;
+    margin-bottom: 16px;
+    color: #8ab4c4;
+    text-decoration: underline;
+    font-weight: normal;
+    display: inline-block;
+}
+
+.back-link:hover {
+    color: #b8d4e4;
+    font-weight: bold;
+}
+
+/* ============================================
+   FORM & INPUT STYLES
+   ============================================ */
+/* Required field asterisk color (*) - dark rose */
+.ant-form-item-required::before {
+    color: #7e3e56 !important;
+}
+
+/* Error message text color - e.g. "Please input your username!" */
+.ant-form-item-explain-error {
+    color: #ffb1d4 !important;
+}
+
+/* Input border color when validation fails (error state) */
+.ant-input-status-error {
+    border-color: #c4827a !important; /* ← geändert von #ffb1d4 */
+}
+
+/* Input border + glow when focused AND in error state */
+.ant-input-status-error:focus {
+    border-color: #c4827a !important; /* ← geändert von #ff69b4 */
+    box-shadow: 0 0 0 2px rgba(196, 130, 122, 0.2) !important;
+}
+
+/* Password input hover */
+.ant-input-affix-wrapper:hover {
+    border-color: #c4827a !important;
+}
+
+/* Password input focus */
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused {
+    border-color: #c4827a !important;
+    box-shadow: 0 0 0 2px rgba(196, 130, 122, 0.2) !important;
+}
+
+/* Password input error */
+.ant-input-affix-wrapper-status-error {
+    border-color: #c4827a !important;
+}
+
+/* Input field hover - mauve/rose border */
+.ant-input:hover {
+    border-color: #c4827a !important;
+}
+
+/* Input field focus - mauve/rose border */
+.ant-input:focus {
+    border-color: #c4827a !important;
+    box-shadow: 0 0 0 2px rgba(196, 130, 122, 0.2) !important;
 }

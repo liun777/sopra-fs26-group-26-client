@@ -1,4 +1,4 @@
-// this code is part of S2 to display a list of all registered users
+// this code is part of S2 to display a list of all registered users 
 // clicking on a user in this list will display /app/users/[id]/page.tsx
 "use client"; // For components that need React hooks and browser APIs, SSR (server side rendering) has to be disabled. Read more here: https://nextjs.org/docs/pages/building-your-application/rendering/server-side-rendering
 
@@ -20,9 +20,14 @@ const columns: TableProps<User>["columns"] = [
     key: "username",
   },
   {
-    title: "Name",
-    dataIndex: "name",
-    key: "name",
+    title: "Status",
+    dataIndex: "status",
+    key: "status",
+  },
+  {
+    title: "Bio",
+    dataIndex: "bio",
+    key: "bio",
   },
   {
     title: "Id",
@@ -43,10 +48,24 @@ const Dashboard: React.FC = () => {
     // set: setToken, // is commented out because we dont need to set or update the token value
     clear: clearToken, // all we need in this scenario is a method to clear the token
   } = useLocalStorage<string>("token", ""); // if you wanted to select a different token, i.e "lobby", useLocalStorage<string>("lobby", "");
+// wir holen token und userId aus dem local storage und wenn man sich ausloggt werden sie gelöscht
+  const {
+    value: userId,
+    clear: clearUserId,
+  } = useLocalStorage<string>("userId", "");
 
-  const handleLogout = (): void => {
-    // Clear token using the returned function 'clear' from the hook
+
+  // beim Logout wird User auf OFFLINE gesetzt im Backend, dann wird token und userId gelöscht
+  const handleLogout = async (): Promise<void> => {
+    try {
+      // Status auf OFFLINE setzen im Backend
+      await apiService.put(`/users/${userId}`, { status: "OFFLINE" });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+    // Token und userId aus localStorage löschen
     clearToken();
+    clearUserId();
     router.push("/login");
   };
 
@@ -73,33 +92,60 @@ const Dashboard: React.FC = () => {
   // if the dependency array is left away, the useEffect will run on every state change. Since we do a state change to users in the useEffect, this results in an infinite loop.
   // read more here: https://react.dev/reference/react/useEffect#specifying-reactive-dependencies
 
-  return (
-    <div className="card-container">
-      <Card
-        title="Get all users from secure endpoint:"
-        loading={!users}
-        className="dashboard-container"
-      >
-        {users && (
-          <>
-            {/* antd Table: pass the columns and data, plus a rowKey for stable row identity */}
-            <Table<User>
-              columns={columns}
-              dataSource={users}
-              rowKey="id"
-              onRow={(row) => ({
-                onClick: () => router.push(`/users/${row.id}`),
-                style: { cursor: "pointer" },
-              })}
-            />
-            <Button onClick={handleLogout} type="primary">
-              Logout
-            </Button>
-          </>
-        )}
-      </Card>
+return (
+    <div className="cabo-background">
+        <div className="login-container">
+            <Card
+                title="User Overview:"
+                loading={!users}
+                className="dashboard-container"
+            >
+                {users && (
+                    <>
+                        <p
+                            className="back-link"
+                            onClick={() => router.push("/dashboard")}
+                        >
+                            ← Back to my profile
+                        </p>
+                        <Table<User>
+                            columns={columns}
+                            dataSource={users}
+                            rowKey="id"
+                            pagination={false}
+                            onRow={(row) => ({
+                                onClick: () => router.push(`/users/${row.id}`),
+                                style: { cursor: "pointer" },
+                                onMouseEnter: (e) => {
+                                    (e.currentTarget as HTMLElement).style.fontWeight = "bold";
+                                },
+                                onMouseLeave: (e) => {
+                                    (e.currentTarget as HTMLElement).style.fontWeight = "normal";
+                                },
+                            })}
+                        />
+                        <Button
+                            type="link"
+                            onClick={handleLogout}
+                            style={{ color: "#b10660", fontSize: "12px", display: "block", margin: "0 auto" }}
+                            onMouseEnter={(e) => {
+                                (e.currentTarget as HTMLElement).style.color = "#ffb1d4";
+                                (e.currentTarget as HTMLElement).style.fontWeight = "bold";
+                            }}
+                            onMouseLeave={(e) => {
+                                (e.currentTarget as HTMLElement).style.color = "#b10660";
+                                (e.currentTarget as HTMLElement).style.fontWeight = "normal";
+                            }}
+                        >
+                            Logout
+                        </Button>
+                    </>
+                )}
+            </Card>
+        </div>
     </div>
-  );
+);
 };
 
 export default Dashboard;
+

@@ -18,10 +18,6 @@ export default function Home() {
           height={38}
           priority
         />
-
-        <h1 style = {{textAlign:"center"}}>
-          Group 26: Cabo Online
-        </h1>
         <ol>
           <li>
             <code>app/page.tsx</code>{" "}

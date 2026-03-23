@@ -6,7 +6,7 @@ export class ApiService {
   private defaultHeaders: HeadersInit;
 
   constructor() {
-    this.baseURL = getApiDomain();
+    this.baseURL = getApiDomain(); // Klasse die backend URL holt, damit Frontend weiss wohin es die Requests schicken soll
     this.defaultHeaders = {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
@@ -22,6 +22,8 @@ export class ApiService {
    * @returns Parsed JSON data.
    * @throws ApplicationError if res.ok is false.
    */
+
+  // Helpermethode die nach jedem Requst schuat ob Antwort gut war, wenn nicht wirft sie Fehler auf
   private async processResponse<T>(
     res: Response,
     errorMessage: string,
@@ -60,6 +62,8 @@ export class ApiService {
    * @param endpoint - The API endpoint (e.g. "/users").
    * @returns JSON data of type T.
    */
+
+  // schickt GET Request ans backend um verschiedene User Profile zu holen.
   public async get<T>(endpoint: string): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const res = await fetch(url, {
@@ -78,6 +82,8 @@ export class ApiService {
    * @param data - The payload to post.
    * @returns JSON data of type T.
    */
+
+  // Schickt POST Request mit den Daten ans backend und kann so zb einen neuen User regisstrieren
   public async post<T>(endpoint: string, data: unknown): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const res = await fetch(url, {
@@ -97,6 +103,8 @@ export class ApiService {
    * @param data - The payload to update.
    * @returns JSON data of type T.
    */
+
+  // Schickt PUT Request um z.b das Passwort zu ändern
   public async put<T>(endpoint: string, data: unknown): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const res = await fetch(url, {
