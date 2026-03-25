@@ -241,3 +241,114 @@ h1 {
     border-color: #c4827a !important;
     box-shadow: 0 0 0 2px rgba(196, 130, 122, 0.2) !important;
 }
+
+/* ============================================
+   GAME page.tsx
+   ============================================ */
+
+
+/* Full grey overlay */
+.game-overlay {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  background: rgba(50, 50, 50, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Generic card styles */
+.card {
+  background-image: url("/cards.png");
+  background-size: cover;
+  background-position: center;
+  border-radius: 8px;
+}
+
+.card.small {
+  width: 60px;
+  height: 90px;
+}
+
+.card.medium {
+  width: 80px;
+  height: 110px;
+}
+
+.card.large {
+  width: 110px;
+  height: 160px;
+}
+
+/* Exit button */
+.exit-button {
+  position: absolute;
+  top: -305px;
+  left: -340px;
+  z-index: 10;
+}
+
+/* Top center cards */
+.top-cards {
+  position: absolute;
+  top: 40px;
+  display: flex;
+  gap: 10px;
+}
+
+/* Bottom cards */
+.bottom-cards {
+  position: absolute;
+  bottom: 40px;
+  display: flex;
+  gap: 15px;
+}
+
+/* Left side */
+.left-cards {
+  position: absolute;
+  left: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+}
+
+/* Right side */
+.right-cards {
+  position: absolute;
+  right: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Center piles */
+.center-area {
+  display: flex;
+  gap: 80px;
+  align-items: center;
+}
+
+.pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: white;
+}
+
+/* Top right buttons */
+.top-right-buttons {
+  position: absolute;
+  top: 40px;
+  right: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
