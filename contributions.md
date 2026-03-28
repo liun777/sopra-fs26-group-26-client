@@ -30,18 +30,20 @@ reason).
 
 ---
 
-## Contributions Week 1 - [Begin Date] to [End Date]
+## Contributions Week 1 - [23.03.2026] to [29.03.2026]
 
-| **Student**        | **Date** | **Link to Commit** | **Description**                 | **Relevance**                       |
-| ------------------ | -------- | ------------------ | ------------------------------- | ----------------------------------- |
-| **[@githubUser1]** | [date]   | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |
-|                    | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
-| **[@githubUser2]** | [date]   | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |
-|                    | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
-| **[@githubUser3]** | [date]   | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |
-|                    | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
-| **[@githubUser4]** | [date]   | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |
-|                    | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
+| **Student**        | **Date**  | **Link to Commit** | **Description**                 | **Relevance**                       |
+| ------------------ | --------  | ------------------ | ------------------------------- | ----------------------------------- |
+| **@janagraf**   | 24.03.2026| https://github.com/liun777/sopra-fs26-group-26-server/commit/da73105c2e1d3591dd554c3d26adef0a0bdac17c | Setup WebSocket configuration with STOMP for real-time lobby updates | Enables the server to push live lobby state changes to all connected clients without polling |
+|                    | 24.03.2026| https://github.com/liun777/sopra-fs26-group-26-server/commit/bb131f99c674536cdfde05803c2bb31177cec647 | Implement unique lobby session IDs and token-based lobby authentication | Allows players to create and join lobbies securely using unique session codes and user tokens |
+|                    | 24.03.2026    | https://github.com/liun777/sopra-fs26-group-26-server/commit/240c03448b7105ffb3afb1f0c85785b84c9003ab | Add WebSocket lobby state controller to handle client state requests | Allows clients to request the current lobby state on reconnect, completing the real-time lobby update flow |
+| **[@aleexgort]** | 23.03.2026    | (https://github.com/liun777/sopra-fs26-group-26-server/commit/ec25402a37f4e91a89f8fbc2d2299c8af78d3b67) | Server: Set up user registration, login and authentication (frontend + backend) #15. Added cabo-themed styling and background across all pages #15 | Allows the others to build upon the inital setup, sets a template for the frontend for the design. |
+| **[@aleexgort]** | 23.03.2026    | https://github.com/liun777/sopra-fs26-group-26-client/commit/c49a5628486f3fd978ca63ba980f41c09f02cd13 | Client: Set up user registration, login and authentication (frontend + backend) #15. Added cabo-themed styling and background across all pages #15 | Allows the others to build upon the inital setup, sets a template for the frontend for the design. |
+|                    | [date]    | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
+| **[@githubUser3]** | [date]    | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |
+|                    | [date]    | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
+| **[@githubUser4]** | [date]    | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |
+|                    | [date]    | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
 
 ---
 

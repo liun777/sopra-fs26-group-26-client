@@ -4,4 +4,10 @@ export interface User {
   username: string | null;
   token: string | null;
   status: string | null;
+  bio: string | null;
+  creationDate: string | null;
+  gamesWon: number | null;
+  averageScorePerRound: number | null;
+  overallRank: number | null;
 }
+ 
