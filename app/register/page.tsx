@@ -30,7 +30,7 @@ const Register: React.FC = () => {
                 setUserId(String(response.id));
             }
 
-            router.push("/dashboard");
+            window.location.assign("/dashboard");
         } catch (error) {
             if (error instanceof Error) {
                 alert(`Registration failed:\n${error.message}`);

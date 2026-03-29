@@ -11,3 +11,9 @@ export function getApiDomain(): string {
   const devUrl = "http://localhost:8080";
   return isProduction() ? prodUrl : devUrl;
 }
+
+export function getSockJsStompUrl(): string {
+  const base = getApiDomain().replace(/\/+$/, "");
+  const withProto = base.includes("://") ? base : `http://${base}`;
+  return `${withProto}/ws`;
+}

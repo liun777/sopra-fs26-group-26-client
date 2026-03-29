@@ -36,8 +36,7 @@ const EditPassword: React.FC = () => {
             clearToken();
             clearUserId();
 
-            // weiterleiten zum Login Screen
-            router.push("/login");
+            window.location.assign("/login");
         } catch (error) {
             // Fehlermeldung anzeigen falls es nicht geht
             if (error instanceof Error) {

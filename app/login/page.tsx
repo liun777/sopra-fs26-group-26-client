@@ -47,8 +47,8 @@ const Login: React.FC = () => {
         setUserId(String(response.id))
       }
 
-      // Navigate to the dashboard or show error
-      router.push("/dashboard");
+      // Full navigation so layout (e.g. invite notifications) remounts and reads token from storage
+      window.location.assign("/dashboard");
     } catch (error) {
       if (error instanceof Error) {
         alert(`Wrong username or password. Please try again.`); // vorher: `Something went wrong during the login:\n${error.message}
