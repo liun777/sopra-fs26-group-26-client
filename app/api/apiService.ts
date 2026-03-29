@@ -28,6 +28,9 @@ export class ApiService {
     res: Response,
     errorMessage: string,
   ): Promise<T> {
+    if (res.ok && (res.status === 204 || res.status === 205)) {
+      return undefined as T;
+    }
     if (!res.ok) {
       let errorDetail = res.statusText;
       try {
@@ -132,6 +135,76 @@ export class ApiService {
     return this.processResponse<T>(
       res,
       "An error occurred while deleting the data.\n",
+    );
+  }
+
+  private authHeaders(token: string): HeadersInit {
+    return {
+      ...this.defaultHeaders,
+      Authorization: token,
+    };
+  }
+
+  public async getWithAuth<T>(endpoint: string, token: string): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: this.authHeaders(token),
+    });
+    return this.processResponse<T>(
+      res,
+      "An error occurred while fetching the data.\n",
+    );
+  }
+
+  public async postWithAuth<T>(
+    endpoint: string,
+    data: unknown,
+    token: string,
+  ): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: this.authHeaders(token),
+      body: JSON.stringify(data),
+    });
+    return this.processResponse<T>(
+      res,
+      "An error occurred while posting the data.\n",
+    );
+  }
+
+  public async putWithAuth<T>(
+    endpoint: string,
+    data: unknown,
+    token: string,
+  ): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`;
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: this.authHeaders(token),
+      body: JSON.stringify(data),
+    });
+    return this.processResponse<T>(
+      res,
+      "An error occurred while updating the data.\n",
+    );
+  }
+
+  public async patchWithAuth<T>(
+    endpoint: string,
+    data: unknown,
+    token: string,
+  ): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`;
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: this.authHeaders(token),
+      body: JSON.stringify(data),
+    });
+    return this.processResponse<T>(
+      res,
+      "An error occurred while updating the data.\n",
     );
   }
 }

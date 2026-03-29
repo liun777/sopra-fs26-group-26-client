@@ -66,7 +66,7 @@ const Dashboard: React.FC = () => {
     // Token und userId aus localStorage löschen
     clearToken();
     clearUserId();
-    router.push("/login");
+    window.location.assign("/login");
   };
 
   useEffect(() => {

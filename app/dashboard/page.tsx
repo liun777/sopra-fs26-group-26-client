@@ -41,7 +41,7 @@ const Dashboard= () => {
         // token und userid wieder aus dem browser löschen
         clearToken();
         clearUserId();
-        router.push("/login"); // weiterleitung zum login am schluss
+        window.location.assign("/login");
     };
 
 return (

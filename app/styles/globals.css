@@ -117,6 +117,120 @@ h1 {
   font-weight: bold;
 }
 
+/* create_lobby */
+.create-lobby-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.create-lobby-card-head-inner {
+  text-align: center;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.create-lobby-title-only-card .ant-card-body {
+  display: none;
+}
+
+.create-lobby-privacy-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: white;
+}
+
+.dashboard-container .create-lobby-player-row.ant-list-item {
+  display: grid !important;
+  grid-template-columns: 1fr 150px 50px;
+  align-items: center;
+  justify-items: start;
+}
+
+.create-lobby-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.create-lobby-code-field {
+  text-align: center;
+  font-weight: bold;
+}
+
+.create-lobby-spin {
+  color: #ffffff !important;
+}
+
+.create-lobby-spin .ant-spin-dot-item {
+  background-color: #ffffff !important;
+}
+
+.create-lobby-start-game-btn.ant-btn-primary.ant-btn-disabled,
+.create-lobby-start-game-btn.ant-btn-primary:disabled {
+  background-color: #5a5a5a !important;
+  border-color: #4a4a4a !important;
+  color: #a3a3a3 !important;
+  cursor: not-allowed !important;
+  opacity: 1;
+}
+
+.create-lobby-start-game-btn.ant-btn-primary.ant-btn-disabled:hover,
+.create-lobby-start-game-btn.ant-btn-primary:disabled:hover {
+  background-color: #5a5a5a !important;
+  border-color: #4a4a4a !important;
+  color: #a3a3a3 !important;
+}
+
+/* Pending Cabo invite */
+.cabo-invite-corner {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  left: auto;
+  z-index: 1000;
+  box-sizing: border-box;
+  width: min(100vw - 32px, 380px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px;
+  background: #16181d;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.cabo-invite-corner-text {
+  margin: 0;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.cabo-invite-corner-actions {
+  align-self: flex-end;
+}
+
+.waiting-lobby-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.waiting-lobby-session {
+  font-size: 14px;
+  font-weight: normal;
+  opacity: 0.9;
+}
+
+.waiting-lobby-table .ant-table {
+  background: transparent;
+}
+
 /* ============================================
    BUTTONS
    ============================================ */
