@@ -1,9 +1,8 @@
 import { useApi } from "@/hooks/useApi";
 import { User } from "@/types/user";
-import { getSockJsStompUrl } from "@/utils/domain";
+import { getStompBrokerUrl } from "@/utils/domain";
 import { Client, IMessage } from "@stomp/stompjs";
 import { useEffect, useState } from "react";
-import SockJS from "sockjs-client";
 
 function parseOnlineUsersJson(body: string): User[] {
   const arr = JSON.parse(body) as unknown[];
@@ -42,7 +41,7 @@ export function useOnlineUsersTopic(): User[] {
     });
 
     const client = new Client({
-      webSocketFactory: () => new SockJS(getSockJsStompUrl()) as unknown as WebSocket,
+      brokerURL: getStompBrokerUrl(),
       reconnectDelay: 5000,
       onConnect: () => {
         client.subscribe("/topic/users/online", (msg: IMessage) => {

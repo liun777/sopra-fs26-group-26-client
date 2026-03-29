@@ -3,11 +3,10 @@
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { useRouter } from "next/navigation";
-import { getSockJsStompUrl } from "@/utils/domain";
+import { getStompBrokerUrl } from "@/utils/domain";
 import { Client, IMessage } from "@stomp/stompjs";
 import { Button, Space } from "antd";
 import { useCallback, useEffect, useState } from "react";
-import SockJS from "sockjs-client";
 
 type CaboInvitePending = {
   id: number;
@@ -70,8 +69,7 @@ export default function CaboInviteNotifications() {
     void loadPending();
 
     const client = new Client({
-      webSocketFactory: () =>
-        new SockJS(getSockJsStompUrl()) as unknown as WebSocket,
+      brokerURL: getStompBrokerUrl(),
       reconnectDelay: 5000,
       onConnect: () => {
         client.subscribe(`/topic/users/${uid}/invites`, (_msg: IMessage) => {

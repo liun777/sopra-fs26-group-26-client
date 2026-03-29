@@ -1,8 +1,7 @@
 import { useApi } from "@/hooks/useApi";
-import { getSockJsStompUrl } from "@/utils/domain";
+import { getStompBrokerUrl } from "@/utils/domain";
 import { Client, IMessage } from "@stomp/stompjs";
 import { useCallback, useEffect, useRef, useState } from "react";
-import SockJS from "sockjs-client";
 
 export type CaboInviteSentStatus = "PENDING" | "ACCEPTED" | "DECLINED";
 
@@ -77,8 +76,7 @@ export function useOutgoingInviteStatuses(userId: string, token: string) {
     void loadSent();
 
     const client = new Client({
-      webSocketFactory: () =>
-        new SockJS(getSockJsStompUrl()) as unknown as WebSocket,
+      brokerURL: getStompBrokerUrl(),
       reconnectDelay: 5000,
       onConnect: () => {
         client.subscribe(`/topic/users/${uid}/invites/sent`, (_msg: IMessage) => {

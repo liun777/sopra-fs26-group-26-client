@@ -2,13 +2,12 @@
 
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
-import { getSockJsStompUrl } from "@/utils/domain";
+import { getStompBrokerUrl } from "@/utils/domain";
 import { Client, IMessage } from "@stomp/stompjs";
 import { Card, Spin, Table, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import SockJS from "sockjs-client";
 
 type WaitingRow = { username: string; joinStatus: string };
 
@@ -60,8 +59,7 @@ function WaitingLobbyContent() {
     if (!t || !sid) return;
 
     const client = new Client({
-      webSocketFactory: () =>
-        new SockJS(getSockJsStompUrl()) as unknown as WebSocket,
+      brokerURL: getStompBrokerUrl(),
       reconnectDelay: 5000,
       onConnect: () => {
         client.subscribe(`/topic/lobby/session/${sid}`, (_msg: IMessage) => {

@@ -12,8 +12,14 @@ export function getApiDomain(): string {
   return isProduction() ? prodUrl : devUrl;
 }
 
-export function getSockJsStompUrl(): string {
+
+export function getStompBrokerUrl(): string {
   const base = getApiDomain().replace(/\/+$/, "");
-  const withProto = base.includes("://") ? base : `http://${base}`;
-  return `${withProto}/ws`;
+  if (base.startsWith("https://")) {
+    return `wss://${base.slice("https://".length)}/ws-stomp`;
+  }
+  if (base.startsWith("http://")) {
+    return `ws://${base.slice("http://".length)}/ws-stomp`;
+  }
+  return `ws://${base}/ws-stomp`;
 }
