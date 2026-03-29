@@ -2,8 +2,8 @@
 
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
-import { getStompBrokerUrl } from "@/utils/domain";
-import { Client, IMessage } from "@stomp/stompjs";
+import { getStompBrokerUrl, isAppspotApi, LIVE_REFRESH_MS } from "@/utils/domain";
+import { Client } from "@stomp/stompjs";
 import { Card, Spin, Table, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -58,18 +58,24 @@ function WaitingLobbyContent() {
     const sid = sessionIdParam?.trim();
     if (!t || !sid) return;
 
+    void loadView();
+
+    if (isAppspotApi()) {
+      const id = setInterval(() => void loadView(), LIVE_REFRESH_MS);
+      return () => clearInterval(id);
+    }
+
     const client = new Client({
       brokerURL: getStompBrokerUrl(),
       reconnectDelay: 5000,
       onConnect: () => {
-        client.subscribe(`/topic/lobby/session/${sid}`, (_msg: IMessage) => {
+        client.subscribe(`/topic/lobby/session/${sid}`, () => {
           void loadView();
         });
         void loadView();
       },
     });
     client.activate();
-
     return () => {
       void client.deactivate();
     };

@@ -3,8 +3,8 @@
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { useRouter } from "next/navigation";
-import { getStompBrokerUrl } from "@/utils/domain";
-import { Client, IMessage } from "@stomp/stompjs";
+import { getStompBrokerUrl, isAppspotApi, LIVE_REFRESH_MS } from "@/utils/domain";
+import { Client } from "@stomp/stompjs";
 import { Button, Space } from "antd";
 import { useCallback, useEffect, useState } from "react";
 
@@ -68,18 +68,22 @@ export default function CaboInviteNotifications() {
 
     void loadPending();
 
+    if (isAppspotApi()) {
+      const id = setInterval(() => void loadPending(), LIVE_REFRESH_MS);
+      return () => clearInterval(id);
+    }
+
     const client = new Client({
       brokerURL: getStompBrokerUrl(),
       reconnectDelay: 5000,
       onConnect: () => {
-        client.subscribe(`/topic/users/${uid}/invites`, (_msg: IMessage) => {
+        client.subscribe(`/topic/users/${uid}/invites`, () => {
           void loadPending();
         });
         void loadPending();
       },
     });
     client.activate();
-
     return () => {
       void client.deactivate();
     };

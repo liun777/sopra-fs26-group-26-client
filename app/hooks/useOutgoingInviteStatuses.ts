@@ -1,6 +1,6 @@
 import { useApi } from "@/hooks/useApi";
-import { getStompBrokerUrl } from "@/utils/domain";
-import { Client, IMessage } from "@stomp/stompjs";
+import { getStompBrokerUrl, isAppspotApi, LIVE_REFRESH_MS } from "@/utils/domain";
+import { Client } from "@stomp/stompjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type CaboInviteSentStatus = "PENDING" | "ACCEPTED" | "DECLINED";
@@ -75,18 +75,22 @@ export function useOutgoingInviteStatuses(userId: string, token: string) {
     hadCredentialsRef.current = true;
     void loadSent();
 
+    if (isAppspotApi()) {
+      const id = setInterval(() => void loadSent(), LIVE_REFRESH_MS);
+      return () => clearInterval(id);
+    }
+
     const client = new Client({
       brokerURL: getStompBrokerUrl(),
       reconnectDelay: 5000,
       onConnect: () => {
-        client.subscribe(`/topic/users/${uid}/invites/sent`, (_msg: IMessage) => {
+        client.subscribe(`/topic/users/${uid}/invites/sent`, () => {
           void loadSent();
         });
         void loadSent();
       },
     });
     client.activate();
-
     return () => {
       void client.deactivate();
     };

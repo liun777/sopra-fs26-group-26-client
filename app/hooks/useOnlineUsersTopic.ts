@@ -1,6 +1,6 @@
 import { useApi } from "@/hooks/useApi";
 import { User } from "@/types/user";
-import { getStompBrokerUrl } from "@/utils/domain";
+import { getStompBrokerUrl, isAppspotApi, LIVE_REFRESH_MS } from "@/utils/domain";
 import { Client, IMessage } from "@stomp/stompjs";
 import { useEffect, useState } from "react";
 
@@ -34,17 +34,35 @@ export function useOnlineUsersTopic(): User[] {
   useEffect(() => {
     let cancelled = false;
 
-    void api.get<User[]>("/users").then((all) => {
-      if (!cancelled) {
-        setOnlineUsers(all.filter((u) => u.status === "ONLINE"));
+    const refreshFromRest = async () => {
+      try {
+        const all = await api.get<User[]>("/users");
+        if (!cancelled) {
+          setOnlineUsers(all.filter((u) => u.status === "ONLINE"));
+        }
+      } catch {
+        if (!cancelled) {
+          setOnlineUsers([]);
+        }
       }
-    });
+    };
+
+    void refreshFromRest();
+
+    if (isAppspotApi()) {
+      const id = setInterval(() => void refreshFromRest(), LIVE_REFRESH_MS);
+      return () => {
+        cancelled = true;
+        clearInterval(id);
+      };
+    }
 
     const client = new Client({
       brokerURL: getStompBrokerUrl(),
       reconnectDelay: 5000,
       onConnect: () => {
         client.subscribe("/topic/users/online", (msg: IMessage) => {
+          if (cancelled) return;
           try {
             if (msg.body) {
               setOnlineUsers(parseOnlineUsersJson(msg.body));

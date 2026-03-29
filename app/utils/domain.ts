@@ -23,3 +23,10 @@ export function getStompBrokerUrl(): string {
   }
   return `ws://${base}/ws-stomp`;
 }
+
+/** App Engine: websocket does not work, fallback to polling */
+export function isAppspotApi(): boolean {
+  return getApiDomain().includes("appspot.com");
+}
+
+export const LIVE_REFRESH_MS = 1000;
