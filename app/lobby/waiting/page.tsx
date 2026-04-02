@@ -8,6 +8,7 @@ import { Card, Spin, Table, Tag, Typography } from "antd";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
+import SockJS from "sockjs-client";
 
 type WaitingRow = { username: string; joinStatus: string };
 
@@ -65,6 +66,19 @@ function WaitingLobbyContent() {
       return () => clearInterval(id);
     }
 
+    // use WebSocket SockJS
+    const client = new Client({
+      webSocketFactory: () => new SockJS(getStompBrokerUrl()),
+      reconnectDelay: 5000,
+      onConnect: () => {
+      client.subscribe(`/topic/lobby/session/${sid}`, () => {
+        void loadView();
+      });
+      void loadView();
+      },
+    });
+    
+    /* -> uses raw WebSocket
     const client = new Client({
       brokerURL: getStompBrokerUrl(),
       reconnectDelay: 5000,
@@ -75,6 +89,8 @@ function WaitingLobbyContent() {
         void loadView();
       },
     });
+    */
+  
     client.activate();
     return () => {
       void client.deactivate();

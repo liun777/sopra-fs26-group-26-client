@@ -12,7 +12,12 @@ export function getApiDomain(): string {
   return isProduction() ? prodUrl : devUrl;
 }
 
+// use STOMP endpoint with SockJS
+export function getStompBrokerUrl(): string {
+  return getApiDomain().replace(/\/+$/, "") + "/ws"; // SockJS uses http/https
+}
 
+/* -> uses raw endpoint
 export function getStompBrokerUrl(): string {
   const base = getApiDomain().replace(/\/+$/, "");
   if (base.startsWith("https://")) {
@@ -23,10 +28,12 @@ export function getStompBrokerUrl(): string {
   }
   return `ws://${base}/ws-stomp`;
 }
+*/
 
-/** App Engine: websocket does not work, fallback to polling */
+/** App Engine: if websocket does not work, fallback to polling */
 export function isAppspotApi(): boolean {
-  return getApiDomain().includes("appspot.com");
+  return false; // try websocket everywhere SockJS handles fallsback
+  // return getApiDomain().includes("appspot.com");
 }
 
 export const LIVE_REFRESH_MS = 1000;
