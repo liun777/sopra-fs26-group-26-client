@@ -48,11 +48,19 @@ reason).
 
 ---
 
-## Contributions Week 2 - [Begin Date] to [End Date]
+## Contributions Week 2 - [30.03.2026] to [05.04.2026]
 
 | **Student**        | **Date** | **Link to Commit** | **Description**                 | **Relevance**                       |
 | ------------------ | -------- | ------------------ | ------------------------------- | ----------------------------------- |
-| **[@githubUser1]** | [date]   | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |
+| **[@aleexgort]** | [03.04.2026]   | [[(https://github.com/liun777/sopra-fs26-group-26-server/commit/27bd126c78cccc1be7495923cc5cb2dc2a457e8c)] | [Implement logic to always render the DiscardPile top card with its face-up value.
+#9] | [Backend: -getDiscardPileTopCard() implemented, -GET /games/{gameId}/discard-pile/top Endpoint implemented ] |
+| **[@aleexgort]** | [03.04.2026]   | [[https://github.com/liun777/sopra-fs26-group-26-client/commit/9d4914928bd1ce8b88c97716bc053918d9094444] | [Implement logic to always render the DiscardPile top card with its face-up value.
+#9] | [Frontend: -get the top card form the backend, - show a "?" if its empty, -show the value when we have a specific card] |
+| **[@aleexgort]** | [03.04.2026]   | [[] | [Brief description of the task] | [Why this contribution is relevant] |
+| **[@aleexgort]** | [03.04.2026]   | [[] | [Brief description of the task] | [Why this contribution is relevant] |
+
+
+
 |                    | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
 | **[@githubUser2]** | [date]   | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |
 |                    | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
