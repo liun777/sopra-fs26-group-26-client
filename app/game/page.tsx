@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useApi } from "@/hooks/useApi";
 import { Button } from "antd";
+import useLocalStorage from "@/hooks/useLocalStorage";
 
 interface Card {
     value: number;
@@ -37,6 +38,32 @@ const Game = () => {
           fetchDiscardTopCard();
       }, [apiService, gameId]);
 
+  //# 8: Implement a global isMyTurn state that disables all buttons and click listeners on the game board when false.
+  // first we get the userID out of the local storage
+      const { value: userId } = useLocalStorage<string>("userId", "");
+
+      // isMyTurn State
+      const [isMyTurn, setIsMyTurn] = useState<boolean>(false);
+
+
+      // then we see if it is the useres turn
+      useEffect(() => {
+          const fetchIsMyTurn = async () => {
+              try {
+                  const result = await apiService.get<boolean>(
+                      `/games/${gameId}/is-my-turn/${userId}`
+                  );
+                  setIsMyTurn(result);
+              } catch (error) {
+                  console.error("Failed to fetch turn status:", error);
+              }
+          };
+
+          if (userId && gameId) fetchIsMyTurn();
+      }, [apiService, gameId, userId]);
+
+
+
       return (
           <div className="cabo-background">
               <div className="game-overlay">
@@ -51,12 +78,6 @@ const Game = () => {
                       {[...Array(4)].map((_, i) => (
                           <div key={i} className="card small" />
                       ))}
-                  </div>
-
-                  {/* TOP RIGHT BUTTONS */}
-                  <div className="top-right-buttons">
-                      <Button>Scores</Button>
-                      <Button type="primary">Call Cabo</Button>
                   </div>
 
                   {/* LEFT SIDE */}
@@ -75,13 +96,18 @@ const Game = () => {
 
                   {/* CENTER */}
                   <div className="center-area">
-                      {/* Draw Pile - immer face-down */}
-                      <div className="pile">
-                          <div className="card medium" />
-                          <p>Draw Pile</p>
-                      </div>
+                      {/* Draw Pile is always face down and only clickable if its the users turn currently */}
+                          <div className="pile">
+                              <div
+                                  className="card medium"
+                                  onClick={isMyTurn ? () => console.log("draw card") : undefined}
+                                  style={{ cursor: isMyTurn ? "pointer" : "not-allowed",
+                                           opacity: isMyTurn ? 1 : 0.6 }}
+                              />
+                              <p>Draw Pile</p>
+                          </div>
 
-                      {/* Discard Pile - top card face-up */}
+                      {/* Discard Pile the top card is always face-up */}
                       <div className="pile">
                           <div className="card medium" style={{
                               backgroundColor: discardTopCard ? "#fff" : "#ccc",
@@ -95,18 +121,32 @@ const Game = () => {
                               borderRadius: "8px",
                               width: "80px",
                               height: "120px",
+                              cursor: isMyTurn ? "pointer" : "not-allowed",
+                              opacity: isMyTurn ? 1 : 0.6,
                           }}>
-                              {/* zeigt Wert wenn Karte vorhanden */}
+                              {/* shows value if there is a card available */}
                               {discardTopCard ? discardTopCard.value : "?"}
                           </div>
                           <p>Discard Pile</p>
                       </div>
                   </div>
 
-                  {/* BOTTOM (You) */}
+                  {/* Buttons are only active if it is users turn */}
+                  <div className="top-right-buttons">
+                      <Button disabled={!isMyTurn}>Scores</Button>
+                      <Button type="primary" disabled={!isMyTurn}>Call Cabo</Button>
+                  </div>
+
+                  {/* Bottom cards are only clickable when its users turn*/}
                   <div className="bottom-cards">
                       {[...Array(4)].map((_, i) => (
-                          <div key={i} className="card large" />
+                          <div
+                              key={i}
+                              className="card large"
+                              onClick={isMyTurn ? () => console.log(`clicked card ${i}`) : undefined}
+                              style={{ cursor: isMyTurn ? "pointer" : "not-allowed",
+                                       opacity: isMyTurn ? 1 : 0.6 }}
+                          />
                       ))}
                   </div>
 
