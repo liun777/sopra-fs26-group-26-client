@@ -52,16 +52,11 @@ reason).
 
 | **Student**        | **Date** | **Link to Commit** | **Description**                 | **Relevance**                       |
 | ------------------ | -------- | ------------------ | ------------------------------- | ----------------------------------- |
-| **[@aleexgort]** | [03.04.2026]   | [[(https://github.com/liun777/sopra-fs26-group-26-server/commit/27bd126c78cccc1be7495923cc5cb2dc2a457e8c)] | [Implement logic to always render the DiscardPile top card with its face-up value.
-#9] | [Backend: -getDiscardPileTopCard() implemented, -GET /games/{gameId}/discard-pile/top Endpoint implemented ] |
-| **[@aleexgort]** | [03.04.2026]   | [[https://github.com/liun777/sopra-fs26-group-26-client/commit/9d4914928bd1ce8b88c97716bc053918d9094444] | [Implement logic to always render the DiscardPile top card with its face-up value.
-#9] | [Frontend: -get the top card form the backend, - show a "?" if its empty, -show the value when we have a specific card] |
+| **[@aleexgort]** | [03.04.2026]   | [https://github.com/liun777/sopra-fs26-group-26-server/commit/27bd126c78cccc1be7495923cc5cb2dc2a457e8c] | [Implement logic to always render the DiscardPile top card with its face-up value.#9] | [Backend: -getDiscardPileTopCard() implemented, -GET /games/{gameId}/discard-pile/top Endpoint implemented ] |
+| **[@aleexgort]** | [03.04.2026]   | [https://github.com/liun777/sopra-fs26-group-26-client/commit/9d4914928bd1ce8b88c97716bc053918d9094444] | [Implement logic to always render the DiscardPile top card with its face-up value.#9] | [Frontend: -get the top card form the backend, - show a "?" if its empty, -show the value when we have a specific card] |
 | **[@aleexgort]** | [03.04.2026]   | [https://github.com/liun777/sopra-fs26-group-26-client/commit/f3534f2686972262027dccd5be632ed492a7c6f3] | [ # 8: Implement a global isMyTurn state that disables all buttons and click listeners on the game board when false.] | [Frontend: -implemented the backend logic in the frontend, such that certain buttons are only clickable when it is the specific users turn ] |
 | **[@aleexgort]** | [03.04.2026]   | [https://github.com/liun777/sopra-fs26-group-26-server/commit/8afd8cfe507b6d8e8c04f86d1f6f0714812b57d3] | [# 8: Implement a global isMyTurn state that disables all buttons and click listeners on the game board when false.] | [Backend: -Adds discard pile top card logic (always visible and up-to-date), - Introduces turn-based interaction control via isMyTurn state] |
-
-
-
-|                    | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
+| **@uIiana** | 04.04.2026   | https://github.com/liun777/sopra-fs26-group-26-server/commit/62a488a41f446e791c060c5acfc452a6c83cb8d2 | Implemented the GameMoveAuthorizationInterceptor that ensures that a move is executed by the current player (returns 403 Forbidden otherwise). The interceptor matches endpoint uri based on the following schema: /games/\*/moves/\*. Wrote 3 tests for new functionality. Closes [#30](https://github.com/liun777/sopra-fs26-group-26-server/issues/30) | A reusable solution for all moves whose endpoints follow the /games/\*/moves/\* schema. Implements some of the core logic. |
 | **[@githubUser2]** | [date]   | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |
 |                    | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
 | **[@githubUser3]** | [date]   | [Link to Commit 1] | [Brief description of the task] | [Why this contribution is relevant] |

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getStompBrokerUrl, isAppspotApi, LIVE_REFRESH_MS } from "@/utils/domain";
 import { Client } from "@stomp/stompjs";
 import { Button, Space } from "antd";
+import SockJS from "sockjs-client";
 import { useCallback, useEffect, useState } from "react";
 
 type CaboInvitePending = {
@@ -74,7 +75,7 @@ export default function CaboInviteNotifications() {
     }
 
     const client = new Client({
-      brokerURL: getStompBrokerUrl(),
+      webSocketFactory: () => new SockJS(getStompBrokerUrl()),
       reconnectDelay: 5000,
       onConnect: () => {
         client.subscribe(`/topic/users/${uid}/invites`, () => {
