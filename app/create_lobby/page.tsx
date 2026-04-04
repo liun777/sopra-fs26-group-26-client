@@ -209,11 +209,27 @@ const CreateLobby = () => {
         void loadSent();
       });
   };
-
-  const generateCode = () => {
-    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    setCode(randomCode);
-  };
+// TODO: Backend logic or the lobby and seeisonID
+ const generateCode = async () => {
+     const t = token.trim();
+     if (!t) return;
+     try {
+         // Backend created the lobby and gives back a sessionID
+         const lobby = await api.postWithAuth<{ sessionId: string }>(
+             "/lobbies",
+             { isPublic: false },
+             t
+         );
+         setCode(lobby.sessionId);
+     } catch (error) {
+         notification.error({
+             message: "Could not create lobby",
+             description: "Something went wrong. Please try again.",
+             placement: "topRight",
+             duration: 4,
+         });
+     }
+ };
 
   return (
     <div className="cabo-background">
@@ -301,11 +317,20 @@ const CreateLobby = () => {
                   Generate Code
                 </Button>
                 {code && (
-                  <Input
-                    value={code}
-                    readOnly
-                    className="create-lobby-code-field"
-                  />
+                    <>
+                        <Input
+                            value={code}
+                            readOnly
+                            className="create-lobby-code-field"
+                        />
+                        <Button
+                            type="primary"
+                            style={{ marginTop: 8 }}
+                            onClick={() => router.push(`/lobby/waiting?sessionId=${code}`)}
+                        >
+                            Create Game with code {code}
+                        </Button>
+                    </>
                 )}
               </div>
             </Card>
