@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Input, List, Spin, Switch } from "antd";
+import { Button, Card, Input, List, Spin, Switch, notification } from "antd";
 import { useRouter } from "next/navigation";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { useApi } from "@/hooks/useApi";
@@ -222,12 +222,7 @@ const CreateLobby = () => {
          );
          setCode(lobby.sessionId);
      } catch (error) {
-         notification.error({
-             message: "Could not create lobby",
-             description: "Something went wrong. Please try again.",
-             placement: "topRight",
-             duration: 4,
-         });
+         alert("Could not create lobby. Something went wrong. Please try again.");
      }
  };
 

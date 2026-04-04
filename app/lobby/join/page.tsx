@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Button, Input, List, Card, notification } from "antd";
+import { Button, Input, List, Card } from "antd";
 import { useRouter } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
@@ -46,32 +46,17 @@ const LobbyJoin = () => {
                 {},
                 token
             );
-            // erfolgreich gejoint → weiterleitung zur waiting lobby
+            // erfolgreich gejoint, dann weiterleitung zur waiting lobby
             router.push(`/lobby/waiting?sessionId=${code.trim()}`);
         } catch (error) {
             const status = (error as ApplicationError)?.status;
             // Toast Notification basierend auf Error Code
             if (status === 404) {
-                notification.error({
-                    message: "Lobby not found",
-                    description: "No lobby exists with this code. Please check and try again.",
-                    placement: "topRight",
-                    duration: 4,
-                });
+                alert("Lobby not found. No lobby exists with this code. Please check and try again.");
             } else if (status === 409) {
-                notification.error({
-                    message: "Lobby full",
-                    description: "This lobby already has 4 players. Please try another lobby.",
-                    placement: "topRight",
-                    duration: 4,
-                });
+                alert("Lobby full. This lobby already has 4 players. Please try another lobby.");
             } else {
-                notification.error({
-                    message: "Could not join lobby",
-                    description: "Something went wrong. Please try again.",
-                    placement: "topRight",
-                    duration: 4,
-                });
+                alert("Could not join lobby. Something went wrong. Please try again.");
             }
         } finally {
             setLoadingCode(false);
@@ -91,26 +76,11 @@ const LobbyJoin = () => {
         } catch (error) {
             const status = (error as ApplicationError)?.status;
             if (status === 404) {
-                notification.error({
-                    message: "Lobby not found",
-                    description: "This lobby no longer exists.",
-                    placement: "topRight",
-                    duration: 4,
-                });
+                alert("Lobby not found. This lobby no longer exists.");
             } else if (status === 409) {
-                notification.error({
-                    message: "Lobby full",
-                    description: "This lobby just filled up. Please try another one.",
-                    placement: "topRight",
-                    duration: 4,
-                });
+                alert("Lobby full. This lobby just filled up. Please try another one.");
             } else {
-                notification.error({
-                    message: "Could not join lobby",
-                    description: "Something went wrong. Please try again.",
-                    placement: "topRight",
-                    duration: 4,
-                });
+                alert("Could not join lobby. Something went wrong. Please try again.");
             }
         } finally {
             setLoadingLobbyId(null);
