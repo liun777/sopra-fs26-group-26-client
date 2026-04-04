@@ -66,11 +66,13 @@ return (
                                 Spy on the other users
                             </Button>
 
+                            {/*  */}
                             <Button type="primary" onClick={() => router.push("/create_lobby")}>
                                 Start a new Game!
                             </Button>
-
-
+                            <Button type="primary" onClick={() => router.push("/lobby/join")}>
+                                Join an existing Game!
+                            </Button>
 
                             <Button type="default" onClick={() => router.push(`/users/${userId}/edit`)}
                                     onMouseEnter={(e) => {

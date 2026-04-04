@@ -261,7 +261,7 @@ h1 {
 
 /* Default Button hover - darker border */
 .ant-btn-default:hover {
-  color: #b10660 !important;
+  color: #c4827a !important;
   border-color: #c4827a !important;
 }
 

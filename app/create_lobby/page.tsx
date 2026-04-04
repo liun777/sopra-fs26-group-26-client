@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Input, List, Spin, Switch } from "antd";
+import { Button, Card, Input, List, Spin, Switch, notification } from "antd";
 import { useRouter } from "next/navigation";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { useApi } from "@/hooks/useApi";
@@ -209,11 +209,22 @@ const CreateLobby = () => {
         void loadSent();
       });
   };
-
-  const generateCode = () => {
-    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    setCode(randomCode);
-  };
+// TODO: Backend logic or the lobby and seeisonID
+ const generateCode = async () => {
+     const t = token.trim();
+     if (!t) return;
+     try {
+         // Backend created the lobby and gives back a sessionID
+         const lobby = await api.postWithAuth<{ sessionId: string }>(
+             "/lobbies",
+             { isPublic: false },
+             t
+         );
+         setCode(lobby.sessionId);
+     } catch (error) {
+         alert("Could not create lobby. Something went wrong. Please try again.");
+     }
+ };
 
   return (
     <div className="cabo-background">
@@ -301,11 +312,20 @@ const CreateLobby = () => {
                   Generate Code
                 </Button>
                 {code && (
-                  <Input
-                    value={code}
-                    readOnly
-                    className="create-lobby-code-field"
-                  />
+                    <>
+                        <Input
+                            value={code}
+                            readOnly
+                            className="create-lobby-code-field"
+                        />
+                        <Button
+                            type="primary"
+                            style={{ marginTop: 8 }}
+                            onClick={() => router.push(`/lobby/waiting?sessionId=${code}`)}
+                        >
+                            Create Game with code {code}
+                        </Button>
+                    </>
                 )}
               </div>
             </Card>
