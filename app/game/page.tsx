@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useApi } from "@/hooks/useApi";
 import { Button } from "antd";
 import useLocalStorage from "@/hooks/useLocalStorage";
+import CardComponent from "./components/CardComponent";
 
 interface Card {
     value: number;
@@ -76,21 +77,21 @@ const Game = () => {
                   {/* TOP CENTER */}
                   <div className="top-cards">
                       {[...Array(4)].map((_, i) => (
-                          <div key={i} className="card small" />
+                         <CardComponent key={i} hidden={true} size="small" />
                       ))}
                   </div>
 
                   {/* LEFT SIDE */}
                   <div className="left-cards">
                       {[...Array(4)].map((_, i) => (
-                          <div key={i} className="card small" />
+                          <CardComponent key={i} hidden={true} size="small" />
                       ))}
                   </div>
 
                   {/* RIGHT SIDE */}
                   <div className="right-cards">
                       {[...Array(4)].map((_, i) => (
-                          <div key={i} className="card small" />
+                          <CardComponent key={i} hidden={true} size="small" />
                       ))}
                   </div>
 
@@ -98,12 +99,12 @@ const Game = () => {
                   <div className="center-area">
                       {/* Draw Pile is always face down and only clickable if its the users turn currently */}
                           <div className="pile">
-                              <div
-                                  className="card medium"
-                                  onClick={isMyTurn ? () => console.log("draw card") : undefined}
-                                  style={{ cursor: isMyTurn ? "pointer" : "not-allowed",
-                                           opacity: isMyTurn ? 1 : 0.6 }}
-                              />
+                              <CardComponent
+                                    hidden={true}
+                                    size="medium"
+                                    onClick={() => console.log("draw card")}
+                                    disabled={!isMyTurn}
+                                />
                               <p>Draw Pile</p>
                           </div>
 
@@ -140,13 +141,13 @@ const Game = () => {
                   {/* Bottom cards are only clickable when its users turn*/}
                   <div className="bottom-cards">
                       {[...Array(4)].map((_, i) => (
-                          <div
-                              key={i}
-                              className="card large"
-                              onClick={isMyTurn ? () => console.log(`clicked card ${i}`) : undefined}
-                              style={{ cursor: isMyTurn ? "pointer" : "not-allowed",
-                                       opacity: isMyTurn ? 1 : 0.6 }}
-                          />
+                          <CardComponent
+                            key={i}
+                            hidden={true}
+                            size="large"
+                            onClick={() => console.log(`clicked card ${i}`)}
+                            disabled={!isMyTurn}
+                            />
                       ))}
                   </div>
 
