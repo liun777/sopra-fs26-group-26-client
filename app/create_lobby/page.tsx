@@ -71,7 +71,8 @@ function buildPublicLobbyPlayers(
     const u = onlineById.get(id);
     const st = sentEntries[key]?.status;
     const serverInvited = st === "PENDING" || st === "ACCEPTED";
-    const loading = inviteLoadingById[key] ?? false;
+    const isInviteRequestPendingInvited = inviteLoadingById[key] ?? false;
+    const loading = isInviteRequestPendingInvited || st === "PENDING"; // invite but not joined shows PENDING
     const name =
       sentEntries[key]?.toUsername?.trim() ||
       u?.username ||
@@ -92,7 +93,8 @@ function buildPublicLobbyPlayers(
     const key = String(id);
     const st = sentEntries[key]?.status;
     const serverInvited = st === "PENDING" || st === "ACCEPTED";
-    const loading = inviteLoadingById[key] ?? false;
+    const isInviteRequestPendingOthers = inviteLoadingById[key] ?? false;
+    const loading = isInviteRequestPendingOthers || st === "PENDING"; // invite but not joined shows PENDING
     otherOnlineRows.push({
       id,
       name: u.username ?? u.name ?? "User",
@@ -325,7 +327,15 @@ const generateCode = async () => {
                 rowKey={(p) => (p.isSelf ? "self" : String(p.id))}
                 renderItem={(player) => (
                   <List.Item className="create-lobby-player-row">
-                    <div>{player.name}</div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <span>{player.name}</span>
+                      {player.loading && (
+                        <Spin // spinner next to name when loading
+                          size="small"
+                          className="create-lobby-spin"
+                        />
+                      )}
+                    </div>
                     <div>
                       {!player.isSelf && (
                         <Button
@@ -339,18 +349,15 @@ const generateCode = async () => {
                           }
                           onClick={() => handleInvite(player.id)}
                         >
-                          {player.invited ? "Invited" : "Invite"}
+                          {player.loading ? ( // I wanted the dots to animate :P
+                            <span className="invite-pending-label">
+                              Invited<span className="invite-pending-dots" />
+                            </span>
+                          ) : player.invited ? "Invited" : "Invite"}
                         </Button>
                       )}
                     </div>
-                    <div>
-                      {player.loading && (
-                        <Spin
-                          size="small"
-                          className="create-lobby-spin"
-                        />
-                      )}
-                    </div>
+                    <div />
                   </List.Item>
                 )}
               />
