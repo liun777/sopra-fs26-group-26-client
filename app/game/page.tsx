@@ -139,7 +139,7 @@ const Game = () => {
                   </div>
 
                   {/* Bottom cards are only clickable when its users turn*/}
-                  <div className="bottom-cards">
+                  <div className={`bottom-cards${isMyTurn ? " game-current-player-highlight" : ""}`}>
                       {[...Array(4)].map((_, i) => (
                           <CardComponent
                             key={i}

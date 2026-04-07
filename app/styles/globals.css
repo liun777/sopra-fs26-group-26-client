@@ -149,6 +149,17 @@ h1 {
   justify-items: start;
 }
 
+/* Active Player glow (for turn: cyan) */
+.dashboard-container .create-lobby-player-row-active.ant-list-item {
+  border: 1px solid #3aa0ff;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 1px rgba(58, 160, 255, 0.28),
+    0 0 10px rgba(58, 160, 255, 0.48),
+    0 0 22px rgba(58, 160, 255, 0.3);
+  padding: 10px 12px !important;
+}
+
 .create-lobby-actions {
   display: flex;
   flex-direction: column;
@@ -441,6 +452,36 @@ h1 {
   bottom: 40px;
   display: flex;
   gap: 15px;
+}
+
+/* Active Player highlight during rounds */
+.bottom-cards.game-current-player-highlight {
+  outline: 2px solid #00a884;
+  outline-offset: 10px;
+  border-radius: 12px;
+  filter:
+    drop-shadow(0 0 8px rgba(0, 168, 132, 0.68))
+    drop-shadow(0 0 18px rgba(0, 168, 132, 0.48));
+  animation: gameActivePlayerGlow 1.8s ease-in-out infinite;
+}
+
+/* active player glow pulse */
+@keyframes gameActivePlayerGlow {
+  0% {
+    filter:
+      drop-shadow(0 0 6px rgba(0, 168, 132, 0.45))
+      drop-shadow(0 0 12px rgba(0, 168, 132, 0.3));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 10px rgba(0, 168, 132, 0.8))
+      drop-shadow(0 0 22px rgba(0, 168, 132, 0.55));
+  }
+  100% {
+    filter:
+      drop-shadow(0 0 6px rgba(0, 168, 132, 0.45))
+      drop-shadow(0 0 12px rgba(0, 168, 132, 0.3));
+  }
 }
 
 /* Left side */

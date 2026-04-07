@@ -325,8 +325,8 @@ const generateCode = async () => {
               <List
                 dataSource={players}
                 rowKey={(p) => (p.isSelf ? "self" : String(p.id))}
-                renderItem={(player) => (
-                  <List.Item className="create-lobby-player-row">
+                renderItem={(player) => ( // color hooks for active player in lobby
+                  <List.Item className={`create-lobby-player-row${player.isSelf ? " create-lobby-player-row-active" : ""}`}>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                       <span>{player.name}</span>
                       {player.loading && (
