@@ -46,8 +46,8 @@ const LobbyJoin = () => {
                 {},
                 token
             );
-            // erfolgreich gejoint, dann weiterleitung zur waiting lobby
-            router.push(`/lobby/waiting?sessionId=${code.trim()}`);
+            // erfolgreich gejoint, dann weiterleitung zur waiting lobby (updated with encodeURIComponent)
+            router.push(`/lobby/${encodeURIComponent(code.trim())}`); //updated
         } catch (error) {
             const status = (error as ApplicationError)?.status;
             // Toast Notification basierend auf Error Code
@@ -63,7 +63,7 @@ const LobbyJoin = () => {
         }
     };
 
-    // join via liste
+    // join via list (similar priniciple as join by code)
     const handleJoinFromList = async (sessionId: string) => {
         setLoadingLobbyId(sessionId);
         try {
@@ -72,7 +72,7 @@ const LobbyJoin = () => {
                 {},
                 token
             );
-            router.push(`/lobby/waiting?sessionId=${sessionId}`);
+            router.push(`/lobby/${encodeURIComponent(sessionId)}`); //updated
         } catch (error) {
             const status = (error as ApplicationError)?.status;
             if (status === 404) {

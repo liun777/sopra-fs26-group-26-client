@@ -387,7 +387,7 @@ const generateCode = async () => {
                         <Button
                             type="primary"
                             style={{ marginTop: 8 }}
-                            onClick={() => router.push(`/lobby/waiting?sessionId=${code}`)}
+                            onClick={() => router.push(`/lobby/${encodeURIComponent(code)}`)} // sends user to lobby code
                         >
                             Create Game with code {code}
                         </Button>

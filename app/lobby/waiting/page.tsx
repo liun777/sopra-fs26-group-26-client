@@ -6,7 +6,7 @@ import { getStompBrokerUrl, isAppspotApi, LIVE_REFRESH_MS } from "@/utils/domain
 import { Client } from "@stomp/stompjs";
 import { Card, Spin, Table, Tag, Typography } from "antd";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation"; // useParams needed for reading sessionId
 import { Suspense, useCallback, useEffect, useState } from "react";
 import SockJS from "sockjs-client";
 
@@ -18,8 +18,11 @@ type WaitingView = {
 };
 
 function WaitingLobbyContent() {
+  const params = useParams<{ sessionId?: string }>();
   const searchParams = useSearchParams();
-  const sessionIdParam = searchParams.get("sessionId");
+  const sessionIdFromPath = String(params?.sessionId ?? "").trim();
+  const sessionIdFromQuery = String(searchParams.get("sessionId") ?? "").trim(); //fallback through quyery
+  const sessionIdParam = sessionIdFromPath || sessionIdFromQuery;
   const api = useApi();
   const { value: token } = useLocalStorage<string>("token", "");
   const [view, setView] = useState<WaitingView | null>(null);

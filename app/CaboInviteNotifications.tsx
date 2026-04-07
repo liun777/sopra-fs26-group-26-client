@@ -110,7 +110,7 @@ export default function CaboInviteNotifications() {
         String(body.waitingLobbySessionId).length > 0
       ) {
         router.push(
-          `/lobby/waiting?sessionId=${encodeURIComponent(String(body.waitingLobbySessionId))}`,
+          `/lobby/${encodeURIComponent(String(body.waitingLobbySessionId))}`, //updated to use encodeURIComponents
         );
       }
     } catch {
