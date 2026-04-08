@@ -1,17 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { Button, Input, List, Card } from "antd";
+import React, { useState } from "react";
+import { Button, Input, Card } from "antd";
 import { useRouter } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import type { ApplicationError } from "@/types/error";
-
-type Lobby = {
-    sessionId: string;
-    playerIds: number[];
-    isPublic: boolean;
-};
 
 const LobbyJoin = () => {
     const router = useRouter();
@@ -19,22 +13,7 @@ const LobbyJoin = () => {
     const { value: token } = useLocalStorage<string>("token", "");
 
     const [code, setCode] = useState("");
-    const [publicLobbies, setPublicLobbies] = useState<Lobby[]>([]);
     const [loadingCode, setLoadingCode] = useState(false);
-    const [loadingLobbyId, setLoadingLobbyId] = useState<string | null>(null);
-
-    // holt alle public lobbies beim laden der seite
-    useEffect(() => {
-        const fetchLobbies = async () => {
-            try {
-                const lobbies = await api.getWithAuth<Lobby[]>("/lobbies", token);
-                setPublicLobbies(lobbies);
-            } catch (error) {
-                console.error("Failed to fetch lobbies:", error);
-            }
-        };
-        if (token) fetchLobbies();
-    }, [api, token]);
 
     // join via code eingabe
     const handleJoinByCode = async () => {
@@ -47,7 +26,7 @@ const LobbyJoin = () => {
                 token
             );
             // erfolgreich gejoint, dann weiterleitung zur waiting lobby (updated with encodeURIComponent)
-            router.push(`/lobby/${encodeURIComponent(code.trim())}`); //updated
+            router.push(`/lobby/${encodeURIComponent(code.trim())}`);
         } catch (error) {
             const status = (error as ApplicationError)?.status;
             // Toast Notification basierend auf Error Code
@@ -60,30 +39,6 @@ const LobbyJoin = () => {
             }
         } finally {
             setLoadingCode(false);
-        }
-    };
-
-    // join via list (similar priniciple as join by code)
-    const handleJoinFromList = async (sessionId: string) => {
-        setLoadingLobbyId(sessionId);
-        try {
-            await api.postWithAuth(
-                `/lobbies/${sessionId}/players`,
-                {},
-                token
-            );
-            router.push(`/lobby/${encodeURIComponent(sessionId)}`); //updated
-        } catch (error) {
-            const status = (error as ApplicationError)?.status;
-            if (status === 404) {
-                alert("Lobby not found. This lobby no longer exists.");
-            } else if (status === 409) {
-                alert("Lobby full. This lobby just filled up. Please try another one.");
-            } else {
-                alert("Could not join lobby. Something went wrong. Please try again.");
-            }
-        } finally {
-            setLoadingLobbyId(null);
         }
     };
 

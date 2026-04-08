@@ -3,7 +3,7 @@
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { useRouter } from "next/navigation";
-import { getStompBrokerUrl, isAppspotApi, LIVE_REFRESH_MS } from "@/utils/domain";
+import { getStompBrokerUrl } from "@/utils/domain";
 import { Client } from "@stomp/stompjs";
 import { Button, Space } from "antd";
 import SockJS from "sockjs-client";
@@ -69,13 +69,9 @@ export default function CaboInviteNotifications() {
 
     void loadPending();
 
-    if (isAppspotApi()) {
-      const id = setInterval(() => void loadPending(), LIVE_REFRESH_MS);
-      return () => clearInterval(id);
-    }
-
     const client = new Client({
       webSocketFactory: () => new SockJS(getStompBrokerUrl()),
+      connectHeaders: { Authorization: t },
       reconnectDelay: 5000,
       onConnect: () => {
         client.subscribe(`/topic/users/${uid}/invites`, () => {

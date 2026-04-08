@@ -1,6 +1,7 @@
 import { useApi } from "@/hooks/useApi";
+import useLocalStorage from "@/hooks/useLocalStorage";
 import { User } from "@/types/user";
-import { getStompBrokerUrl, isAppspotApi, LIVE_REFRESH_MS } from "@/utils/domain";
+import { getStompBrokerUrl } from "@/utils/domain";
 import { Client, IMessage } from "@stomp/stompjs";
 import { useEffect, useState } from "react";
 import SockJS from "sockjs-client";
@@ -30,6 +31,7 @@ function parseOnlineUsersJson(body: string): User[] {
  */
 export function useOnlineUsersTopic(): User[] {
   const api = useApi();
+  const { value: token } = useLocalStorage<string>("token", "");
   const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
 
   useEffect(() => {
@@ -49,29 +51,26 @@ export function useOnlineUsersTopic(): User[] {
     };
 
     void refreshFromRest();
+    const t = token.trim();
 
-    if (isAppspotApi()) {
-      const id = setInterval(() => void refreshFromRest(), LIVE_REFRESH_MS);
-      return () => {
-        cancelled = true;
-        clearInterval(id);
-      };
-    }
-    
     // use SockJS instead of raw WebSocket
-    const client = new Client({
-      webSocketFactory: () => new SockJS(getStompBrokerUrl()),
-      reconnectDelay: 5000,
-      onConnect: () => {
-        client.subscribe("/topic/users/online", (msg: IMessage) => {
-          if (cancelled) return;
-          try {
-            if (msg.body) setOnlineUsers(parseOnlineUsersJson(msg.body));
-          } catch {}
-        });
-      },
-    });
-    client.activate();
+    let client: Client | null = null;
+    if (t) {
+      client = new Client({
+        webSocketFactory: () => new SockJS(getStompBrokerUrl()),
+        connectHeaders: { Authorization: t },
+        reconnectDelay: 5000,
+        onConnect: () => {
+          client?.subscribe("/topic/users/online", (msg: IMessage) => {
+            if (cancelled) return;
+            try {
+              if (msg.body) setOnlineUsers(parseOnlineUsersJson(msg.body));
+            } catch {}
+          });
+        },
+      });
+      client.activate();
+    }
 
     /* -> uses raw Websocket
     const client = new Client({
@@ -94,9 +93,11 @@ export function useOnlineUsersTopic(): User[] {
 
     return () => {
       cancelled = true;
-      void client.deactivate();
+      if (client) {
+        void client.deactivate();
+      }
     };
-  }, [api]);
+  }, [api, token]);
 
   return onlineUsers;
 }

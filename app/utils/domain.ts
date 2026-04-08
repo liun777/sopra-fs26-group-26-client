@@ -30,10 +30,4 @@ export function getStompBrokerUrl(): string {
 }
 */
 
-/** App Engine: if websocket does not work, fallback to polling */
-export function isAppspotApi(): boolean {
-  return false; // try websocket everywhere SockJS handles fallsback
-  // return getApiDomain().includes("appspot.com");
-}
-
 export const LIVE_REFRESH_MS = 1000;

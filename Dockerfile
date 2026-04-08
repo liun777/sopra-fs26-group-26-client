@@ -1,5 +1,5 @@
 # Build image
-FROM node:22.14.0 as build
+FROM node:22.14.0 AS build
 # Set container working directory to /app
 WORKDIR /app
 # Copy npm instructions
@@ -18,7 +18,7 @@ RUN npm prune --production
 # Use small production image
 FROM node:22.14.0-alpine
 # Set the env to "production"
-ENV NODE_ENV production
+ENV NODE_ENV=production
 # Set npm cache to a directory the non-root user can access
 RUN npm config set cache /app/.npm-cache --global
 # Get non-root user

@@ -79,14 +79,6 @@ h1 {
   background-color: transparent;
 }
 
-.card-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  background-color: transparent;
-}
-
 .form-card {
   background: rgba(58, 58, 58, 0.75);
   padding: 40px;
@@ -130,8 +122,102 @@ h1 {
   line-height: 1.4;
 }
 
-.create-lobby-title-only-card .ant-card-body {
-  display: none;
+.lobby-intro-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  color: #f2f2f2;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.lobby-section-title-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lobby-section-title {
+  text-align: left;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.lobby-section-meta {
+  text-align: right;
+  color: #f2f2f2;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.lobby-header-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lobby-header-title {
+  text-align: left;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.lobby-header-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lobby-header-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+
+.lobby-header-mode-open {
+  background-color: #1f6fd1;
+  border-color: #1959a8;
+  color: #ffffff;
+}
+
+.lobby-header-mode-private {
+  background-color: #a15c00;
+  border-color: #7f4900;
+  color: #ffffff;
+}
+
+.lobby-connection-symbol {
+  font-size: 24px;
+  line-height: 1;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.lobby-connection-symbol.connected {
+  color: #52c41a;
+  text-shadow:
+    0 0 5px rgba(82, 196, 26, 0.55),
+    0 0 12px rgba(82, 196, 26, 0.35);
+}
+
+.lobby-connection-symbol.disconnected {
+  color: #ff4d4f;
+  text-shadow:
+    0 0 5px rgba(255, 77, 79, 0.35),
+    0 0 10px rgba(255, 77, 79, 0.2);
 }
 
 .create-lobby-privacy-toggle {
@@ -149,26 +235,268 @@ h1 {
   justify-items: start;
 }
 
-/* Active Player glow (for turn: cyan) */
-.dashboard-container .create-lobby-player-row-active.ant-list-item {
-  border: 1px solid #3aa0ff;
-  border-radius: 10px;
-  box-shadow:
-    0 0 0 1px rgba(58, 160, 255, 0.28),
-    0 0 10px rgba(58, 160, 255, 0.48),
-    0 0 22px rgba(58, 160, 255, 0.3);
-  padding: 10px 12px !important;
+.dashboard-container .lobby-slot-row.ant-list-item {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) 112px 46px;
+  column-gap: 8px;
+  align-items: center;
+  justify-items: start;
 }
 
+.lobby-slot-highlight-row {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 12px !important;
+  margin: 4px 0 !important;
+}
+
+.lobby-slot-highlight-row-active {
+  border-style: dashed;
+  border-color: rgba(43, 125, 233, 0.8);
+  background: rgba(43, 125, 233, 0.18);
+  box-shadow: none;
+}
+
+.lobby-slot-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.lobby-ready-bar {
+  width: 4px;
+  height: 1em;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.lobby-ready-bar-ready {
+  background: #2f9e44;
+}
+
+.lobby-ready-bar-not-ready {
+  background: #c0392b;
+}
+
+.lobby-ready-bar-empty {
+  background: rgba(170, 180, 192, 0.55);
+}
+
+.lobby-slot-status-btn.ant-btn {
+  width: 112px;
+  min-width: 112px;
+  justify-content: center;
+}
+
+.lobby-slot-status-btn.ant-btn,
+.lobby-slot-status-btn.ant-btn.ant-btn-disabled,
+.lobby-slot-status-btn.ant-btn:disabled {
+  color: #ffffff !important;
+}
+
+.lobby-slot-status-host.ant-btn,
+.lobby-slot-status-host.ant-btn.ant-btn-disabled,
+.lobby-slot-status-host.ant-btn:disabled {
+  background-color: #ffffff !important;
+  border-color: #d8d8d8 !important;
+  color: #2f2f2f !important;
+  opacity: 1;
+}
+
+.lobby-slot-status-joined.ant-btn,
+.lobby-slot-status-joined.ant-btn.ant-btn-disabled,
+.lobby-slot-status-joined.ant-btn:disabled {
+  background-color: #2f9e44 !important;
+  border-color: #23783a !important;
+  color: #ffffff !important;
+  opacity: 1;
+}
+
+.lobby-slot-status-open.ant-btn,
+.lobby-slot-status-open.ant-btn.ant-btn-disabled,
+.lobby-slot-status-open.ant-btn:disabled {
+  background-color: #49515b !important;
+  border-color: #657080 !important;
+  color: #ffffff !important;
+  opacity: 1;
+}
+
+.lobby-slot-actions {
+  width: 46px;
+  min-width: 46px;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0;
+}
+
+.lobby-kick-btn.ant-btn,
+.lobby-kick-btn.ant-btn.ant-btn-disabled,
+.lobby-kick-btn.ant-btn:disabled {
+  width: 40px;
+  min-width: 40px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  background-color: #5a5a5a !important;
+  border-color: #4a4a4a !important;
+  color: #d2d2d2 !important;
+  opacity: 1;
+}
+
+.lobby-kick-btn-host.ant-btn,
+.lobby-kick-btn-host.ant-btn.ant-btn-disabled,
+.lobby-kick-btn-host.ant-btn:disabled {
+  background-color: #c0392b !important;
+  border-color: #9e2f24 !important;
+  color: #ffffff !important;
+  opacity: 1;
+}
+
+.lobby-kick-icon {
+  color: #ffffff !important;
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Arial Unicode MS", sans-serif;
+}
+
+.lobby-kick-confirm .ant-popconfirm-message-title,
+.lobby-kick-confirm .ant-popconfirm-description {
+  color: #ffffff;
+}
+
+.lobby-kick-confirm.ant-popover,
+.lobby-kick-confirm .ant-popover-content {
+  background: transparent !important;
+}
+
+.lobby-kick-confirm .ant-popover-inner {
+  background: rgba(58, 58, 58, 0.96) !important;
+  padding: 14px 16px !important;
+  border: 1px solid rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45) !important;
+  outline: none !important;
+}
+
+.lobby-kick-confirm .ant-popover-inner-content,
+.lobby-kick-confirm .ant-popconfirm-inner-content {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.lobby-kick-confirm .ant-popover-arrow {
+  display: none !important;
+}
+
+.lobby-kick-confirm .ant-popconfirm-message-icon {
+  display: none !important;
+}
+
+.lobby-kick-confirm .ant-popconfirm-message-title {
+  margin-inline-start: 0 !important;
+}
+
+.lobby-kick-confirm .ant-btn-primary.ant-btn-dangerous {
+  background-color: #c0392b !important;
+  border-color: #9e2f24 !important;
+  color: #ffffff !important;
+}
+
+.lobby-kick-confirm .ant-btn-default {
+  background-color: #4f5b67 !important;
+  border-color: #6a7786 !important;
+  color: #ffffff !important;
+}
+
+.lobby-slot-row-open {
+  border-style: dashed !important;
+  border-color: rgba(190, 205, 220, 0.36) !important;
+  background: rgba(150, 170, 190, 0.06);
+}
+
+.lobby-open-slot-text {
+  color: #cfd8e2;
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+
+.lobby-title-card .ant-card-body {
+  padding-top: 20px !important;
+}
+
+.lobby-players-card .ant-card-body {
+  padding-top: 28px !important;
+}
+
+.lobby-players-list .ant-list-item {
+  border-block-end: none !important;
+}
+
+.lobby-players-list {
+  margin-top: 16px;
+}
+
+.lobby-invite-collapse.ant-collapse {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.lobby-invite-collapse .ant-collapse-header {
+  color: #f2f2f2 !important;
+  font-weight: 600;
+}
+
+.lobby-invite-collapse .ant-collapse-content {
+  background: transparent !important;
+  border-top-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.lobby-invite-collapse .ant-collapse-content-box {
+  padding: 8px 0 !important;
+}
+
+.lobby-invite-search.ant-input {
+  margin-bottom: 10px;
+}
+
+.lobby-invite-joined-btn.ant-btn,
+.lobby-invite-joined-btn.ant-btn.ant-btn-disabled,
+.lobby-invite-joined-btn.ant-btn:disabled {
+  background-color: #2f9e44 !important;
+  border-color: #23783a !important;
+  color: #ffffff !important;
+  opacity: 1;
+}
+
+.lobby-controls-disabled {
+  opacity: 0.74;
+}
+
+.lobby-invite-collapse-disabled .ant-collapse-header {
+  color: #bcbcbc !important;
+}
+
+.lobby-private-switch.ant-switch {
+  background-color: #9c4135 !important;
+}
+
+.lobby-private-switch.ant-switch:hover:not(.ant-switch-disabled) {
+  background-color: #b64c3e !important;
+}
+
+.lobby-private-switch.ant-switch-checked {
+  background-color: #2f9e44 !important;
+}
+
+.lobby-private-switch.ant-switch-checked:hover:not(.ant-switch-disabled) {
+  background-color: #38b24d !important;
+}
+
+/* Active Player glow (for turn: cyan) */
 .create-lobby-actions {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.create-lobby-code-field {
-  text-align: center;
-  font-weight: bold;
 }
 
 .create-lobby-spin {
@@ -177,30 +505,6 @@ h1 {
 
 .create-lobby-spin .ant-spin-dot-item {
   background-color: #ffffff !important;
-}
-
-/* pending user invite / loading button */
-.invite-pending-label {
-  display: inline-flex;
-  align-items: center;
-}
-
-/* pending user invite / loading dots */
-.invite-pending-dots::after {
-  content: "";
-  display: inline-block;
-  width: 3.5em; /* adjust if you change contents of @keyframes inviteDots! */
-  text-align: left;
-  animation: inviteDots 1.2s steps(4, end) infinite; /* can adjust how fast */
-}
-
-/* pending user invite / loading dots frames */
-@keyframes inviteDots {
-  0% { content: ""; }
-  25% { content: " ."; }
-  50% { content: " . ."; }
-  75% { content: " . . ."; }
-  100% { content: ""; }
 }
 
 .create-lobby-start-game-btn.ant-btn-primary.ant-btn-disabled,
@@ -217,6 +521,38 @@ h1 {
   background-color: #5a5a5a !important;
   border-color: #4a4a4a !important;
   color: #a3a3a3 !important;
+}
+
+.lobby-viewer-ready-main-btn.ant-btn {
+  width: 100%;
+  font-weight: 600;
+}
+
+.lobby-viewer-ready-main-btn-ready-up.ant-btn,
+.lobby-viewer-ready-main-btn-ready-up.ant-btn:hover,
+.lobby-viewer-ready-main-btn-ready-up.ant-btn:focus {
+  background-color: #2f9e44 !important;
+  border-color: #23783a !important;
+  color: #ffffff !important;
+}
+
+.lobby-viewer-ready-main-btn-no-longer-ready.ant-btn,
+.lobby-viewer-ready-main-btn-no-longer-ready.ant-btn:hover,
+.lobby-viewer-ready-main-btn-no-longer-ready.ant-btn:focus {
+  background-color: #c0392b !important;
+  border-color: #9e2f24 !important;
+  color: #ffffff !important;
+}
+
+.lobby-viewer-ready-main-btn-not-ready.ant-btn,
+.lobby-viewer-ready-main-btn-not-ready.ant-btn.ant-btn-disabled,
+.lobby-viewer-ready-main-btn-not-ready.ant-btn:disabled,
+.lobby-viewer-ready-main-btn-not-ready.ant-btn:hover,
+.lobby-viewer-ready-main-btn-not-ready.ant-btn:focus {
+  background-color: #c0392b !important;
+  border-color: #9e2f24 !important;
+  color: #ffffff !important;
+  opacity: 1;
 }
 
 /* Pending Cabo invite */
@@ -256,14 +592,37 @@ h1 {
   min-height: 200px;
 }
 
-.waiting-lobby-session {
-  font-size: 14px;
-  font-weight: normal;
-  opacity: 0.9;
+.create-lobby-player-action.ant-btn.ant-btn-disabled,
+.create-lobby-player-action.ant-btn:disabled {
+  background-color: #5a5a5a !important;
+  border-color: #4a4a4a !important;
+  color: #a3a3a3 !important;
+  cursor: not-allowed !important;
+  opacity: 1;
 }
 
-.waiting-lobby-table .ant-table {
-  background: transparent;
+/* Keep semantic lobby statuses after generic disabled style */
+.create-lobby-player-action.lobby-slot-status-host.ant-btn.ant-btn-disabled,
+.create-lobby-player-action.lobby-slot-status-host.ant-btn:disabled {
+  background-color: #ffffff !important;
+  border-color: #d8d8d8 !important;
+  color: #2f2f2f !important;
+}
+
+.create-lobby-player-action.lobby-slot-status-joined.ant-btn.ant-btn-disabled,
+.create-lobby-player-action.lobby-slot-status-joined.ant-btn:disabled,
+.create-lobby-player-action.lobby-invite-joined-btn.ant-btn.ant-btn-disabled,
+.create-lobby-player-action.lobby-invite-joined-btn.ant-btn:disabled {
+  background-color: #2f9e44 !important;
+  border-color: #23783a !important;
+  color: #ffffff !important;
+}
+
+.create-lobby-player-action.lobby-slot-status-open.ant-btn.ant-btn-disabled,
+.create-lobby-player-action.lobby-slot-status-open.ant-btn:disabled {
+  background-color: #49515b !important;
+  border-color: #657080 !important;
+  color: #ffffff !important;
 }
 
 /* ============================================
