@@ -4,6 +4,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --app-page-max-width: 1040px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -84,13 +85,40 @@ h1 {
   padding: 40px;
   border-radius: 20px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  width: 100%;
-  max-width: 400px;
+  width: min(92vw, var(--app-page-max-width));
+  max-width: var(--app-page-max-width);
   backdrop-filter: blur(5px);
 }
 
+.auth-form-header h1 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.auth-form-divider {
+  width: 100%;
+  height: 1px;
+  margin: 12px 0 18px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.auth-secondary-nav-btn.ant-btn {
+  width: 100%;
+  color: #a8b87a !important;
+  border-color: #a8b87a !important;
+  background: rgba(168, 184, 122, 0.08) !important;
+  font-weight: 600;
+}
+
+.auth-secondary-nav-btn.ant-btn:hover {
+  color: #d4e4a8 !important;
+  border-color: #d4e4a8 !important;
+  background: rgba(212, 228, 168, 0.16) !important;
+}
+
 .dashboard-container {
-  width: 500px;
+  width: 100%;
+  max-width: var(--app-page-max-width);
   pointer-events: all;
   background-color: rgba(58, 58, 58, 0.75) !important;
   border-color: #3a3a3a !important;
@@ -111,15 +139,10 @@ h1 {
 
 /* create_lobby */
 .create-lobby-stack {
+  width: min(92vw, var(--app-page-max-width));
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.create-lobby-card-head-inner {
-  text-align: center;
-  white-space: normal;
-  line-height: 1.4;
 }
 
 .lobby-intro-copy {
@@ -200,12 +223,14 @@ h1 {
   color: #ffffff;
 }
 
+.live-connection-symbol,
 .lobby-connection-symbol {
   font-size: 24px;
   line-height: 1;
   transition: color 0.2s ease, text-shadow 0.2s ease;
 }
 
+.live-connection-symbol.connected,
 .lobby-connection-symbol.connected {
   color: #52c41a;
   text-shadow:
@@ -213,11 +238,296 @@ h1 {
     0 0 12px rgba(82, 196, 26, 0.35);
 }
 
+.live-connection-symbol.disconnected,
 .lobby-connection-symbol.disconnected {
   color: #ff4d4f;
   text-shadow:
     0 0 5px rgba(255, 77, 79, 0.35),
     0 0 10px rgba(255, 77, 79, 0.2);
+}
+
+.dashboard-stack {
+  width: min(92vw, var(--app-page-max-width));
+  max-width: var(--app-page-max-width);
+}
+
+.dashboard-stack .dashboard-container {
+  width: 100%;
+}
+
+.dashboard-welcome-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #e8a87c;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.dashboard-welcome-greeting {
+  display: block;
+}
+
+.dashboard-welcome-player {
+  display: block;
+  color: #f2f2f2;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: #f2f2f2;
+  margin-bottom: 8px;
+}
+
+.dashboard-metric-row span:last-child {
+  font-weight: 700;
+}
+
+.dashboard-section-title {
+  color: #e8a87c;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.dashboard-button-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.profile-key {
+  color: #e8a87c;
+  font-weight: 700;
+}
+
+.profile-value {
+  color: #f2f2f2;
+  text-align: right;
+}
+
+.profile-bio-block {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.profile-bio-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-bio-edit-btn.ant-btn {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.36) !important;
+  background-color: rgba(43, 125, 233, 0.35) !important;
+}
+
+.profile-bio-edit-btn.ant-btn:hover {
+  background-color: rgba(43, 125, 233, 0.52) !important;
+}
+
+.profile-bio-text {
+  color: #f2f2f2;
+  margin-top: 10px;
+  white-space: pre-wrap;
+}
+
+.profile-bio-text-placeholder {
+  font-style: italic;
+}
+
+.settings-form .ant-form-item-label > label {
+  color: #f2f2f2 !important;
+}
+
+.form-label-required {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.form-label-required-star {
+  color: #ff4d4f !important;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.users-overview-table .ant-table {
+  background: transparent !important;
+  color: #f2f2f2 !important;
+}
+
+.users-overview-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.users-overview-search.ant-input {
+  margin-bottom: 0;
+}
+
+.users-refresh-btn.ant-btn {
+  min-width: 96px;
+}
+
+.users-username-cell {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+  vertical-align: top;
+}
+
+.users-overview-table .ant-table-container,
+.users-overview-table .ant-table-content,
+.users-overview-table .ant-table-thead > tr > th,
+.users-overview-table .ant-table-tbody > tr > td {
+  background: transparent !important;
+  color: #f2f2f2 !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.users-overview-table .ant-table-content {
+  overflow-x: hidden !important;
+}
+
+.users-overview-table .ant-table-thead > tr > th {
+  font-weight: 700;
+  color: #e8a87c !important;
+  white-space: normal;
+}
+
+.users-overview-table .users-status-col .ant-table-column-sorters {
+  justify-content: flex-end;
+}
+
+.users-overview-table .ant-table-tbody > tr.users-overview-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.users-overview-table .ant-table-tbody > tr.users-overview-row:hover > td {
+  background: rgba(43, 125, 233, 0.18) !important;
+}
+
+.users-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 74px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+}
+
+@media (max-width: 820px) {
+  .users-overview-table .ant-table-thead > tr > th,
+  .users-overview-table .ant-table-tbody > tr > td {
+    padding: 8px 4px !important;
+    font-size: 13px;
+  }
+
+  .users-status-pill {
+    min-width: 64px;
+    height: 24px;
+    padding: 0 6px;
+    font-size: 12px;
+  }
+}
+
+.users-status-online {
+  background-color: #2f9e44;
+  border-color: #23783a;
+}
+
+.users-status-offline {
+  background-color: #c0392b;
+  border-color: #9e2f24;
+}
+
+.users-status-lobby {
+  background-color: #1f6fd1;
+  border-color: #1959a8;
+}
+
+.users-status-playing {
+  background-color: #c27c00;
+  border-color: #9b6400;
+}
+
+.users-status-unknown {
+  background-color: #5a5a5a;
+  border-color: #4a4a4a;
+}
+
+.join-by-code-actions-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.join-by-code-actions-row .ant-btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.join-card-title-left {
+  width: 100%;
+  text-align: left;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+@media (max-width: 640px) {
+  .join-by-code-actions-row {
+    flex-direction: column;
+  }
+
+  .join-by-code-actions-row .ant-btn {
+    width: 100%;
+  }
+}
+
+.lobby-invite-status-pill {
+  width: 112px;
+  min-width: 112px;
+  height: 34px;
+  margin-left: 0;
 }
 
 .create-lobby-privacy-toggle {
@@ -230,9 +540,13 @@ h1 {
 
 .dashboard-container .create-lobby-player-row.ant-list-item {
   display: grid !important;
-  grid-template-columns: 1fr 150px 50px;
+  grid-template-columns: minmax(0, 1fr) 112px 112px;
+  column-gap: 8px;
   align-items: center;
-  justify-items: start;
+}
+
+.dashboard-container .create-lobby-player-row.ant-list-item > :last-child {
+  justify-self: end;
 }
 
 .dashboard-container .lobby-slot-row.ant-list-item {
@@ -284,42 +598,43 @@ h1 {
   background: rgba(170, 180, 192, 0.55);
 }
 
-.lobby-slot-status-btn.ant-btn {
+.lobby-slot-status-pill {
   width: 112px;
   min-width: 112px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: default;
+  user-select: none;
 }
 
-.lobby-slot-status-btn.ant-btn,
-.lobby-slot-status-btn.ant-btn.ant-btn-disabled,
-.lobby-slot-status-btn.ant-btn:disabled {
-  color: #ffffff !important;
+.lobby-slot-status-btn {
+  color: #ffffff;
 }
 
-.lobby-slot-status-host.ant-btn,
-.lobby-slot-status-host.ant-btn.ant-btn-disabled,
-.lobby-slot-status-host.ant-btn:disabled {
-  background-color: #ffffff !important;
-  border-color: #d8d8d8 !important;
-  color: #2f2f2f !important;
+.lobby-slot-status-host {
+  background-color: #ffffff;
+  border-color: #d8d8d8;
+  color: #2f2f2f;
   opacity: 1;
 }
 
-.lobby-slot-status-joined.ant-btn,
-.lobby-slot-status-joined.ant-btn.ant-btn-disabled,
-.lobby-slot-status-joined.ant-btn:disabled {
-  background-color: #2f9e44 !important;
-  border-color: #23783a !important;
-  color: #ffffff !important;
+.lobby-slot-status-joined {
+  background-color: #2f9e44;
+  border-color: #23783a;
+  color: #ffffff;
   opacity: 1;
 }
 
-.lobby-slot-status-open.ant-btn,
-.lobby-slot-status-open.ant-btn.ant-btn-disabled,
-.lobby-slot-status-open.ant-btn:disabled {
-  background-color: #49515b !important;
-  border-color: #657080 !important;
-  color: #ffffff !important;
+.lobby-slot-status-open {
+  background-color: #49515b;
+  border-color: #657080;
+  color: #ffffff;
   opacity: 1;
 }
 
@@ -360,8 +675,7 @@ h1 {
   font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Arial Unicode MS", sans-serif;
 }
 
-.lobby-kick-confirm .ant-popconfirm-message-title,
-.lobby-kick-confirm .ant-popconfirm-description {
+.lobby-kick-confirm .ant-popconfirm-message-title {
   color: #ffffff;
 }
 
@@ -370,22 +684,10 @@ h1 {
   background: transparent !important;
 }
 
-.lobby-kick-confirm .ant-popover-inner {
-  background: rgba(58, 58, 58, 0.96) !important;
-  padding: 14px 16px !important;
-  border: 1px solid rgba(0, 0, 0, 0.5) !important;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45) !important;
-  outline: none !important;
-}
-
 .lobby-kick-confirm .ant-popover-inner-content,
 .lobby-kick-confirm .ant-popconfirm-inner-content {
   background: transparent !important;
   padding: 0 !important;
-}
-
-.lobby-kick-confirm .ant-popover-arrow {
-  display: none !important;
 }
 
 .lobby-kick-confirm .ant-popconfirm-message-icon {
@@ -466,14 +768,6 @@ h1 {
   border-color: #23783a !important;
   color: #ffffff !important;
   opacity: 1;
-}
-
-.lobby-controls-disabled {
-  opacity: 0.74;
-}
-
-.lobby-invite-collapse-disabled .ant-collapse-header {
-  color: #bcbcbc !important;
 }
 
 .lobby-private-switch.ant-switch {
@@ -594,6 +888,10 @@ h1 {
 
 .create-lobby-player-action.ant-btn.ant-btn-disabled,
 .create-lobby-player-action.ant-btn:disabled {
+  width: 112px;
+  min-width: 112px;
+  height: 34px;
+  border-radius: 999px;
   background-color: #5a5a5a !important;
   border-color: #4a4a4a !important;
   color: #a3a3a3 !important;
@@ -601,27 +899,21 @@ h1 {
   opacity: 1;
 }
 
-/* Keep semantic lobby statuses after generic disabled style */
-.create-lobby-player-action.lobby-slot-status-host.ant-btn.ant-btn-disabled,
-.create-lobby-player-action.lobby-slot-status-host.ant-btn:disabled {
-  background-color: #ffffff !important;
-  border-color: #d8d8d8 !important;
-  color: #2f2f2f !important;
+.create-lobby-player-action.ant-btn {
+  width: 112px;
+  min-width: 112px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.create-lobby-player-action.lobby-slot-status-joined.ant-btn.ant-btn-disabled,
-.create-lobby-player-action.lobby-slot-status-joined.ant-btn:disabled,
+/* Keep semantic lobby statuses after generic disabled style */
 .create-lobby-player-action.lobby-invite-joined-btn.ant-btn.ant-btn-disabled,
 .create-lobby-player-action.lobby-invite-joined-btn.ant-btn:disabled {
   background-color: #2f9e44 !important;
   border-color: #23783a !important;
-  color: #ffffff !important;
-}
-
-.create-lobby-player-action.lobby-slot-status-open.ant-btn.ant-btn-disabled,
-.create-lobby-player-action.lobby-slot-status-open.ant-btn:disabled {
-  background-color: #49515b !important;
-  border-color: #657080 !important;
   color: #ffffff !important;
 }
 
@@ -645,6 +937,32 @@ h1 {
 .ant-btn-primary:hover {
   background-color: #c4827a !important;
   border-color: #c4827a !important;
+}
+
+/* Dashboard logout button (colorblind-friendly red) */
+.dashboard-logout-btn.ant-btn-primary {
+  background-color: #c0392b !important;
+  border-color: #9e2f24 !important;
+  color: #ffffff !important;
+}
+
+.dashboard-logout-btn.ant-btn-primary:hover {
+  background-color: #a93226 !important;
+  border-color: #86281d !important;
+  color: #ffffff !important;
+}
+
+.lobby-leave-btn.ant-btn-primary,
+.lobby-leave-btn.ant-btn-primary.ant-btn-disabled,
+.lobby-leave-btn.ant-btn-primary:disabled,
+.lobby-leave-btn.ant-btn-primary.ant-btn-disabled:hover,
+.lobby-leave-btn.ant-btn-primary:disabled:hover {
+  width: 100%;
+  background-color: #c0392b !important;
+  border-color: #9e2f24 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
 }
 
 /* Default Buttons (orange outline) -"Change Password" */
@@ -681,21 +999,6 @@ h1 {
 .form-card .ant-btn-link:hover {
   color: #d4e4a8 !important;
   font-weight: bold !important;
-}
-
-/* Back navigation link - muted blue, underlined */
-.back-link {
-    cursor: pointer;
-    margin-bottom: 16px;
-    color: #8ab4c4;
-    text-decoration: underline;
-    font-weight: normal;
-    display: inline-block;
-}
-
-.back-link:hover {
-    color: #b8d4e4;
-    font-weight: bold;
 }
 
 /* ============================================

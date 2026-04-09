@@ -1,151 +1,283 @@
-// this code is part of S2 to display a list of all registered users 
+// this code is part of S2 to display a list of all registered users
 // clicking on a user in this list will display /app/users/[id]/page.tsx
-"use client"; // For components that need React hooks and browser APIs, SSR (server side rendering) has to be disabled. Read more here: https://nextjs.org/docs/pages/building-your-application/rendering/server-side-rendering
+"use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { User } from "@/types/user";
-import { Button, Card, Table } from "antd";
-import type { TableProps } from "antd"; // antd component library allows imports of types
-// Optionally, you can import a CSS module or file for additional styling:
-// import "@/styles/views/Dashboard.scss";
+import { PresenceKey, toPresenceKey, toPresenceLabel } from "@/utils/presence";
+import { getStompBrokerUrl } from "@/utils/domain";
+import { Client } from "@stomp/stompjs";
+import SockJS from "sockjs-client";
+import { Button, Card, Input, Table } from "antd";
+import type { TableProps } from "antd";
 
-// Columns for the antd table of User objects
-const columns: TableProps<User>["columns"] = [
+type UserRow = User & {
+  key: string;
+  games: number;
+  winRatePct: number | null;
+  averageScore: number | null;
+  presenceLabel: string;
+  presenceKey: PresenceKey;
+};
+
+const columns: TableProps<UserRow>["columns"] = [
   {
     title: "Username",
     dataIndex: "username",
     key: "username",
+    align: "left",
+    sorter: (a, b) =>
+      String(a.username ?? a.name ?? "").localeCompare(
+        String(b.username ?? b.name ?? ""),
+      ),
+    sortDirections: ["ascend", "descend"],
+    render: (value, row) => {
+      const username = String(value ?? row.name ?? "-");
+      return (
+        <span className="users-username-cell" title={username}>
+          {username}
+        </span>
+      );
+    },
+  },
+  {
+    title: "Win Rate",
+    dataIndex: "winRatePct",
+    key: "winRatePct",
+    align: "center",
+    sorter: (a, b) => (a.winRatePct ?? -1) - (b.winRatePct ?? -1),
+    sortDirections: ["ascend", "descend", "ascend"],
+    render: (value) =>
+      value == null ? "-" : `${Number(value).toFixed(1).replace(/\.0$/, "")}%`,
+  },
+  {
+    title: "Games",
+    dataIndex: "games",
+    key: "games",
+    align: "center",
+    sorter: (a, b) => a.games - b.games,
+    sortDirections: ["ascend", "descend"],
+  },
+  {
+    title: "\u2300 Score",
+    dataIndex: "averageScore",
+    key: "averageScore",
+    align: "center",
+    sorter: (a, b) => (a.averageScore ?? -1) - (b.averageScore ?? -1),
+    sortDirections: ["ascend", "descend"],
+    render: (value) =>
+      value == null || Number.isNaN(Number(value))
+        ? "-"
+        : Number(value).toFixed(2).replace(/\.00$/, ""),
   },
   {
     title: "Status",
-    dataIndex: "status",
+    dataIndex: "presenceLabel",
     key: "status",
-  },
-  {
-    title: "Bio",
-    dataIndex: "bio",
-    key: "bio",
-  },
-  {
-    title: "Id",
-    dataIndex: "id",
-    key: "id",
+    align: "right",
+    className: "users-status-col",
+    sorter: (a, b) => a.presenceLabel.localeCompare(b.presenceLabel),
+    sortDirections: ["ascend", "descend"],
+    render: (_, row) => (
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <span className={`users-status-pill users-status-${row.presenceKey}`}>
+          {row.presenceLabel}
+        </span>
+      </div>
+    ),
   },
 ];
 
-const Dashboard: React.FC = () => {
+const UsersPage: React.FC = () => {
   const router = useRouter();
   const apiService = useApi();
+  const { value: token } = useLocalStorage<string>("token", "");
+  const { value: userId } = useLocalStorage<string>("userId", "");
   const [users, setUsers] = useState<User[] | null>(null);
-  // useLocalStorage hook example use
-  // The hook returns an object with the value and two functions
-  // Simply choose what you need from the hook:
-  const {
-    // value: token, // is commented out because we dont need to know the token value for logout
-    // set: setToken, // is commented out because we dont need to set or update the token value
-    clear: clearToken, // all we need in this scenario is a method to clear the token
-  } = useLocalStorage<string>("token", ""); // if you wanted to select a different token, i.e "lobby", useLocalStorage<string>("lobby", "");
-// wir holen token und userId aus dem local storage und wenn man sich ausloggt werden sie gelöscht
-  const {
-    value: userId,
-    clear: clearUserId,
-  } = useLocalStorage<string>("userId", "");
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [liveConnected, setLiveConnected] = useState(false);
 
-
-  // beim Logout wird User auf OFFLINE gesetzt im Backend, dann wird token und userId gelöscht
-  const handleLogout = async (): Promise<void> => {
+  const fetchUsers = useCallback(async () => {
+    setRefreshing(true);
     try {
-      // Status auf OFFLINE setzen im Backend
-      await apiService.put(`/users/${userId}`, { status: "OFFLINE" });
+      const fetchedUsers: User[] = await apiService.get<User[]>("/users");
+      setUsers(fetchedUsers);
     } catch (error) {
-      console.error("Logout error:", error);
+      setUsers([]);
+      if (error instanceof Error) {
+        alert(`Something went wrong while fetching users:\n${error.message}`);
+      } else {
+        console.error("An unknown error occurred while fetching users.");
+      }
+    } finally {
+      setRefreshing(false);
     }
-    // Token und userId aus localStorage löschen
-    clearToken();
-    clearUserId();
-    window.location.assign("/login");
-  };
+  }, [apiService]);
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        // apiService.get<User[]> returns the parsed JSON object directly,
-        // thus we can simply assign it to our users variable.
-        const users: User[] = await apiService.get<User[]>("/users");
-        setUsers(users);
-        console.log("Fetched users:", users);
-      } catch (error) {
-        if (error instanceof Error) {
-          alert(`Something went wrong while fetching users:\n${error.message}`);
-        } else {
-          console.error("An unknown error occurred while fetching users.");
-        }
-      }
+    void fetchUsers();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    const authToken = token.trim();
+    if (!authToken) {
+      setLiveConnected(false);
+      return;
+    }
+
+    const client = new Client({
+      webSocketFactory: () => new SockJS(getStompBrokerUrl()),
+      connectHeaders: { Authorization: authToken },
+      reconnectDelay: 5000,
+      onConnect: () => {
+        setLiveConnected(true);
+      },
+      onStompError: () => {
+        setLiveConnected(false);
+      },
+      onWebSocketClose: () => {
+        setLiveConnected(false);
+      },
+      onWebSocketError: () => {
+        setLiveConnected(false);
+      },
+    });
+
+    client.activate();
+    return () => {
+      setLiveConnected(false);
+      void client.deactivate();
     };
+  }, [token]);
 
-    fetchUsers();
-  }, [apiService]); // dependency apiService does not re-trigger the useEffect on every render because the hook uses memoization (check useApi.tsx in the hooks).
-  // if the dependency array is left empty, the useEffect will trigger exactly once
-  // if the dependency array is left away, the useEffect will run on every state change. Since we do a state change to users in the useEffect, this results in an infinite loop.
-  // read more here: https://react.dev/reference/react/useEffect#specifying-reactive-dependencies
+  const rows: UserRow[] = useMemo(
+    () =>
+      (users ?? [])
+        .filter((user) => String(user.id ?? "").trim() !== userId.trim())
+        .map((user) => {
+          const wins = Number(user.gamesWon ?? 0);
+          const gamesPlayedRaw = (
+            user as User & { gamesPlayed?: number | null; games?: number | null }
+          ).gamesPlayed ?? (
+            user as User & { gamesPlayed?: number | null; games?: number | null }
+          ).games ?? 0;
+          const gamesPlayed = Number.isFinite(Number(gamesPlayedRaw))
+            ? Number(gamesPlayedRaw)
+            : 0;
+          const winRatePct =
+            gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : null;
+          const presenceKey = toPresenceKey(user.status);
+          const averageScoreRaw = user.averageScorePerRound;
+          const averageScore =
+            averageScoreRaw == null || !Number.isFinite(Number(averageScoreRaw))
+              ? null
+              : Number(averageScoreRaw);
+          return {
+            ...user,
+            key: String(user.id ?? ""),
+            games: gamesPlayed,
+            winRatePct,
+            averageScore,
+            presenceLabel: toPresenceLabel(presenceKey),
+            presenceKey,
+          };
+        }),
+    [users, userId],
+  );
 
-return (
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredUsers =
+    rows?.filter((user) => {
+      if (!normalizedSearch) {
+        return true;
+      }
+      const username = String(user.username ?? "").toLowerCase();
+      const name = String(user.name ?? "").toLowerCase();
+      const status = String(user.presenceLabel ?? "").toLowerCase();
+      return (
+        username.includes(normalizedSearch) ||
+        name.includes(normalizedSearch) ||
+        status.includes(normalizedSearch)
+      );
+    }) ?? [];
+
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/dashboard");
+  };
+
+  return (
     <div className="cabo-background">
-        <div className="login-container">
-            <Card
-                title="User Overview:"
-                loading={!users}
-                className="dashboard-container"
-            >
-                {users && (
-                    <>
-                        <p
-                            className="back-link"
-                            onClick={() => router.push("/dashboard")}
-                        >
-                            ← Back to my profile
-                        </p>
-                        <Table<User>
-                            columns={columns}
-                            dataSource={users}
-                            rowKey="id"
-                            pagination={false}
-                            onRow={(row) => ({
-                                onClick: () => router.push(`/users/${row.id}`),
-                                style: { cursor: "pointer" },
-                                onMouseEnter: (e) => {
-                                    (e.currentTarget as HTMLElement).style.fontWeight = "bold";
-                                },
-                                onMouseLeave: (e) => {
-                                    (e.currentTarget as HTMLElement).style.fontWeight = "normal";
-                                },
-                            })}
-                        />
-                        <Button
-                            type="link"
-                            onClick={handleLogout}
-                            style={{ color: "#b10660", fontSize: "12px", display: "block", margin: "0 auto" }}
-                            onMouseEnter={(e) => {
-                                (e.currentTarget as HTMLElement).style.color = "#ffb1d4";
-                                (e.currentTarget as HTMLElement).style.fontWeight = "bold";
-                            }}
-                            onMouseLeave={(e) => {
-                                (e.currentTarget as HTMLElement).style.color = "#b10660";
-                                (e.currentTarget as HTMLElement).style.fontWeight = "normal";
-                            }}
-                        >
-                            Logout
-                        </Button>
-                    </>
-                )}
-            </Card>
+      <div className="login-container">
+        <div className="create-lobby-stack dashboard-stack">
+          <Card
+            title={
+              <div className="lobby-section-title-row">
+                <span className="dashboard-section-title">All Users</span>
+                <span
+                  className={`live-connection-symbol ${liveConnected ? "connected" : "disconnected"}`}
+                  title={liveConnected ? "Connected" : "Disconnected"}
+                >
+                  {"\u1BE4"}
+                </span>
+              </div>
+            }
+            loading={!users}
+            className="dashboard-container"
+          >
+            {users ? (
+              <>
+                <div className="users-overview-toolbar">
+                  <Input
+                    value={searchTerm}
+                    allowClear
+                    className="users-overview-search"
+                    placeholder="Search by Username or Status"
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                  />
+                  <Button
+                    type="default"
+                    className="users-refresh-btn"
+                    loading={refreshing}
+                    onClick={() => void fetchUsers()}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+                <Table<UserRow>
+                  className="users-overview-table"
+                  columns={columns}
+                  dataSource={filteredUsers}
+                  rowKey="key"
+                  size="small"
+                  pagination={false}
+                  rowClassName={() => "users-overview-row"}
+                  onRow={(row) => ({
+                    onClick: () => router.push(`/users/${row.id}`),
+                  })}
+                />
+              </>
+            ) : null}
+          </Card>
+
+          <Card className="dashboard-container">
+            <div className="dashboard-button-stack">
+              <Button type="default" onClick={handleBack}>
+                {"\u2190"} Back
+              </Button>
+            </div>
+          </Card>
         </div>
+      </div>
     </div>
-);
+  );
 };
 
-export default Dashboard;
-
+export default UsersPage;

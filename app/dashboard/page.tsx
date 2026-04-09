@@ -1,112 +1,252 @@
-"use client"; // seite wird im browser ausgeführt, nicht auf dem server 
+﻿"use client"; // seite wird im browser ausgeführt, nicht auf dem server 
 
 // S1: nach erfolgreichem login: Dashboard Screen - wird nach dem Login angezeigt
 // beinhaltet overview des users und seiner daten, möglichkeit zum logout, aber auch inspektion der anderen user sowie auch password change button  (s3)
-import React, { useEffect, useState } from "react";
+
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
+import { getStompBrokerUrl } from "@/utils/domain";
 import { User } from "@/types/user";
 import { Button, Card } from "antd";
+import { Client } from "@stomp/stompjs";
+import SockJS from "sockjs-client";
 
-const Dashboard= () => {
-    const router = useRouter(); // navigieren zu anderen seiten
-    const apiService = useApi(); // zugriff auf apiservice für backend requests
-    const [user, setUser] = useState<User | null>(null); // speichert eingeloggten useranfangs leer
-    const { value: userId, clear: clearUserId} = useLocalStorage<string>("userId", ""); //hollt userId aus browser und kann sie löschen
-    const { clear: clearToken } = useLocalStorage<string>("token", "");  //kann token aus browser löschen
+// Simple 3 variant dynamic greetings on Dashboard
+type GreetingSlot = "morning" | "day" | "afternoon" | "evening" | "night";
 
-    // user vom back end holen via get request und speichern, fehlermeldung falls es nicht geht.
-    useEffect(() => {
-        const fetchUser = async () => { /// warten auf antwort vom backend (async)
-            try {
-                const fetchedUser: User = await apiService.get<User>(`/users/${userId}`);
-                setUser(fetchedUser); // speichert den user damit er angezeigt werden kann
-            } catch (error) {
-                if (error instanceof Error) {
-                    alert(`Something went wrong:\n${error.message}`);
-                }
-            }
-        };
-        if (userId) fetchUser();
-    }, [apiService, userId]);
+const GREETINGS_BY_TIME_SLOT: Record<GreetingSlot, string[]> = {
+  morning: [
+    "Online-CABO is ready to be played.",
+    "Good morning! Welcome back to Online-CABO.",
+    "Good morning. Ready for Online-CABO?",
+  ],
+  day: [
+    "Good day. Welcome to Online-CABO.",
+    "Good day. Enjoy Online-CABO.",
+    "Good day. Great to see you in Online-CABO.",
+  ],
+  afternoon: [
+    "Good afternoon. Welcome back to Online-CABO.",
+    "Afternoon! Ready for Online-CABO?",
+    "Good afternoon. Let's play Online-CABO.",
+  ],
+  evening: [
+    "Good evening. Welcome back to Online-CABO.",
+    "Evening! Time for Online-CABO.",
+    "Good evening. Online-CABO is ready.",
+  ],
+  night: [
+    "Welcome back to Online-CABO, night owl.",
+    "Late session? Online-CABO is ready.",
+    "Online-CABO is ready whenever you are.",
+  ],
+};
 
-    // für logout button:
-    const handleLogout = async (): Promise<void> => {
-        try {
-            await apiService.put(`/users/${userId}`, { status: "OFFLINE" }); // falls man auf logout click wird der status im backend auf ofline gesetzt
-        } catch (error) {
-            console.error("Logout error:", error);
+function getGreetingSlotByHour(localHour: number): GreetingSlot {
+  if (localHour >= 5 && localHour < 11) return "morning";
+  if (localHour >= 11 && localHour < 14) return "day";
+  if (localHour >= 14 && localHour < 18) return "afternoon";
+  if (localHour >= 18 && localHour < 23) return "evening";
+  return "night";
+}
+
+function pickRandomGreeting(slot: GreetingSlot): string {
+  const options = GREETINGS_BY_TIME_SLOT[slot];
+  return options[Math.floor(Math.random() * options.length)] ?? "Welcome back to Online-CABO!";
+}
+
+const Dashboard = () => {
+  const router = useRouter();
+  const apiService = useApi();
+
+  const [user, setUser] = useState<User | null>(null);
+  const [liveConnected, setLiveConnected] = useState(false);
+
+  const { value: userId, clear: clearUserId } = useLocalStorage<string>("userId", "");
+  const { value: token, clear: clearToken } = useLocalStorage<string>("token", "");
+
+  // user vom back end holen via get request und speichern, fehlermeldung falls es nicht geht.
+  useEffect(() => {
+    if (!userId.trim()) {
+      router.replace("/login");
+      return;
+    }
+
+    let active = true;
+
+    const fetchUser = async () => {
+      try {
+        const fetchedUser = await apiService.get<User>(`/users/${encodeURIComponent(userId)}`);
+        if (active) {
+          setUser(fetchedUser);
         }
-        // token und userid wieder aus dem browser löschen
-        clearToken();
-        clearUserId();
-        window.location.assign("/login");
+      } catch (error) {
+        if (active && error instanceof Error) {
+          alert(`Something went wrong:\n${error.message}`);
+        }
+      }
     };
 
-return (
+    void fetchUser();
+
+    return () => {
+      active = false;
+    };
+  }, [apiService, userId, router]);
+
+  useEffect(() => {
+    const authToken = token.trim();
+    if (!authToken) {
+      setLiveConnected(false);
+      return;
+    }
+
+    const client = new Client({
+      webSocketFactory: () => new SockJS(getStompBrokerUrl()),
+      connectHeaders: { Authorization: authToken },
+      reconnectDelay: 5000,
+      onConnect: () => {
+        setLiveConnected(true);
+      },
+      onStompError: () => {
+        setLiveConnected(false);
+      },
+      onWebSocketClose: () => {
+        setLiveConnected(false);
+      },
+      onWebSocketError: () => {
+        setLiveConnected(false);
+      },
+    });
+
+    client.activate();
+    return () => {
+      setLiveConnected(false);
+      void client.deactivate();
+    };
+  }, [token]);
+
+  const greeting = useMemo(() => {
+    const localHour = new Date().getHours();
+    const slot = getGreetingSlotByHour(localHour);
+    return pickRandomGreeting(slot);
+  }, []);
+
+  // für logout button:
+  const handleLogout = (): void => {
+    const authToken = token.trim();
+
+    // Local-first logout to keep UX instant even if backend/network is slow.
+    clearToken();
+    clearUserId();
+
+    if (authToken) {
+      void apiService.postWithAuth("/auth/logout", {}, authToken).catch(() => {
+        // ignore: user is already logged out locally
+      });
+    }
+
+    window.location.assign("/login");
+  };
+
+  const wins = Number(user?.gamesWon ?? 0);
+  const gamesPlayedRaw = (
+    user as User & { gamesPlayed?: number | null; games?: number | null }
+  )?.gamesPlayed ?? (
+    user as User & { gamesPlayed?: number | null; games?: number | null }
+  )?.games ?? 0;
+  const gamesPlayed = Number.isFinite(Number(gamesPlayedRaw))
+    ? Number(gamesPlayedRaw)
+    : 0;
+  const winRatePct = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
+  const winRateText = Number(winRatePct).toFixed(1).replace(/\.0$/, "");
+  const winsGamesSummary = `${wins}/${gamesPlayed} (${winRateText}%)`;
+  const averageScore = user?.averageScorePerRound ?? "-";
+
+  return (
     <div className="cabo-background">
-        <div className="login-container">
-            <Card loading={!user} className="dashboard-container">
-                {user && (
-                    <>
-                        <h1>Welcome to Online-CABO!</h1>
-                        <div style={{ textAlign: "center", marginBottom: 24 }}>
-                            <p><strong>Username:</strong> {user.username}</p>
-                            <p><strong>Status:</strong> {user.status}</p>
-                            <p><strong>Bio:</strong> {user.bio}</p>
-                            <p><strong>Creation Date:</strong> {user.creationDate}</p>
-                            <p><strong>Games Won:</strong> {user.gamesWon ?? "No games played"}</p>
-                            <p><strong>Average Score:</strong> {user.averageScorePerRound ?? "No games played"}</p>
-                            <p><strong>Overall Rank:</strong> {user.overallRank ?? "No games played"}</p>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="login-container">
+        <div className="create-lobby-stack dashboard-stack">
+          <Card
+            className="dashboard-container"
+            title={
+              <div className="lobby-header-row">
+                <span className="dashboard-welcome-title">
+                  <span className="dashboard-welcome-greeting">{greeting}</span>
+                </span>
+                <span
+                  className={`live-connection-symbol ${liveConnected ? "connected" : "disconnected"}`}
+                  title={liveConnected ? "Connected" : "Disconnected"}
+                >
+                  {"\u1BE4"}
+                </span>
+              </div>
+            }
+          >
+            <div className="dashboard-welcome-player">{user?.username?.trim() || "Player"}</div>
+            <div className="dashboard-metric-row">
+              <span>Wins/Games</span>
+              <span>{winsGamesSummary}</span>
+            </div>
+            <div className="dashboard-metric-row">
+              <span>Average Score per Round</span>
+              <span>{averageScore}</span>
+            </div>
+          </Card>
 
-                            <Button type="primary" onClick={() => router.push("/users")}>
-                                Spy on the other users
-                            </Button>
+          <Card
+            className="dashboard-container"
+            title={<div className="dashboard-section-title">Play</div>}
+          >
+            <div className="dashboard-button-stack">
+              <Button type="primary" onClick={() => router.push("/lobby/join")}>
+                Join a Game
+              </Button>
+              <Button type="default" disabled>
+                Random Matchmaking
+              </Button>
+              <Button type="primary" onClick={() => router.push("/create_lobby")}>
+                Create a New Lobby
+              </Button>
+            </div>
+          </Card>
 
-                            {/*  */}
-                            <Button type="primary" onClick={() => router.push("/create_lobby")}>
-                                Start a new Game!
-                            </Button>
-                            <Button type="primary" onClick={() => router.push("/lobby/join")}>
-                                Join an existing Game!
-                            </Button>
+          <Card
+            className="dashboard-container"
+            title={<div className="dashboard-section-title">Users</div>}
+          >
+            <div className="dashboard-button-stack">
+              <Button
+                type="primary"
+                onClick={() => router.push(`/users/${encodeURIComponent(userId.trim())}`)}
+              >
+                User Profile
+              </Button>
+              <Button type="primary" onClick={() => router.push("/users")}>
+                User List
+              </Button>
+            </div>
+          </Card>
 
-                            <Button type="default" onClick={() => router.push(`/users/${userId}/edit`)}
-                                    onMouseEnter={(e) => {
-                                        (e.currentTarget as HTMLElement).style.color = "#b10660";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        (e.currentTarget as HTMLElement).style.color = "";
-                                        (e.currentTarget as HTMLElement).style.borderColor = "";
-                                    }}
-                            >
-                                Change Password
-                            </Button>
-                            <Button
-                                type="link"
-                                onClick={handleLogout}
-                                style={{ color: "#b51366", fontSize: "12px" }}
-                                onMouseEnter={(e) => {
-                                    (e.currentTarget as HTMLElement).style.color = "#ffb1d4";
-                                    (e.currentTarget as HTMLElement).style.fontWeight = "bold";
-                                }}
-                                onMouseLeave={(e) => {
-                                    (e.currentTarget as HTMLElement).style.color = "#b51366";
-                                    (e.currentTarget as HTMLElement).style.fontWeight = "normal";
-                                }}
-                            >
-                                Logout
-                            </Button>
-                        </div>
-                    </>
-                )}
-            </Card>
+          <Card
+            className="dashboard-container"
+            title={<div className="dashboard-section-title">Settings</div>}
+          >
+            <div className="dashboard-button-stack">
+              <Button type="primary" onClick={() => router.push("/settings")}>
+                Settings
+              </Button>
+              <Button type="primary" className="dashboard-logout-btn" onClick={() => void handleLogout()}>
+                Logout
+              </Button>
+            </div>
+          </Card>
         </div>
+      </div>
     </div>
-);
+  );
 };
-export default Dashboard;
 
+export default Dashboard;

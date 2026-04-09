@@ -9,7 +9,8 @@ import {
 } from "@/hooks/useOutgoingInviteStatuses";
 import type { ApplicationError } from "@/types/error";
 import type { User } from "@/types/user";
-import { getStompBrokerUrl, LIVE_REFRESH_MS } from "@/utils/domain";
+import { getStompBrokerUrl } from "@/utils/domain";
+import { PresenceKey, toPresenceKey, toPresenceLabel } from "@/utils/presence";
 import { Client } from "@stomp/stompjs";
 import { Button, Card, Collapse, Input, List, Popconfirm, Spin, Switch, Typography } from "antd";
 import Link from "next/link";
@@ -37,6 +38,8 @@ type Player = {
   name: string;
   invited: boolean;
   loading: boolean;
+  presenceKey: PresenceKey;
+  presenceLabel: string;
   joined?: boolean;
   isSelf?: boolean;
 };
@@ -53,13 +56,17 @@ type LobbySlot = {
   ready: boolean;
 };
 
-const MAX_ACTIVE_INVITES = 3; // revisit
+const MAX_ACTIVE_INVITES = 10; // CAN BE CHANGED, set to 10 to avoid users spamming invites, but enough for legit cases
 const MAX_LOBBY_PLAYERS = 4;
 const HOST_CROWN = "\uD83D\uDC51\uFE0E";
 const KICK_ICON = "\u2716";
 
 function normalizeValue(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
+}
+
+function canInvitePresence(presence: PresenceKey): boolean {
+  return presence === "online";
 }
 
 function countActiveInvites(sentEntries: Record<string, CaboSentInviteEntry>) {
@@ -98,7 +105,7 @@ function toLobbySlotStatus(
 }
 
 function buildPublicLobbyPlayers(
-  onlineUsers: User[],
+  candidateUsers: User[],
   selfId: string,
   sentEntries: Record<string, CaboSentInviteEntry>,
   inviteLoadingById: Record<string, boolean>,
@@ -107,16 +114,19 @@ function buildPublicLobbyPlayers(
 ): Player[] {
   const selfTrim = selfId.trim();
   const selfNumeric = selfTrim ? Number(selfTrim) : 0;
-  const selfUser = onlineUsers.find(
+  const selfUser = candidateUsers.find(
     (user) => user.id != null && String(user.id) === selfTrim,
   );
   const selfLabel = selfUser?.username?.trim() || selfUser?.name?.trim() || "Player";
+  const selfPresenceKey = toPresenceKey(selfUser?.status);
 
   const selfRow: Player = {
     id: selfNumeric,
-    name: selfIsHost ? `${selfLabel} ${HOST_CROWN}` : selfLabel,
+    name: selfIsHost ? `${selfLabel} ${HOST_CROWN}` : selfLabel, // give host a crown
     invited: true,
     loading: false,
+    presenceKey: selfPresenceKey,
+    presenceLabel: toPresenceLabel(selfPresenceKey),
     isSelf: true,
   };
 
@@ -125,7 +135,7 @@ function buildPublicLobbyPlayers(
   }
 
   const onlineById = new Map<number, User>();
-  for (const user of onlineUsers) {
+  for (const user of candidateUsers) {
     if (user.id == null || String(user.id) === selfTrim) {
       continue;
     }
@@ -162,12 +172,15 @@ function buildPublicLobbyPlayers(
       user?.username ||
       user?.name ||
       `User ${id}`;
+    const rowPresenceKey = toPresenceKey(user?.status);
 
     invitedRows.push({
       id,
       name,
       invited: serverInvited || inviteRequestPending || loading,
       loading,
+      presenceKey: rowPresenceKey,
+      presenceLabel: toPresenceLabel(rowPresenceKey),
       joined,
     });
   }
@@ -188,12 +201,15 @@ function buildPublicLobbyPlayers(
     const usernameKey = normalizeValue(sentEntries[key]?.toUsername ?? user?.username);
     const joined = acceptedInvite && Boolean(usernameKey && joinedByUsername[usernameKey]);
     const loading = acceptedInvite && !joined;
+    const rowPresenceKey = toPresenceKey(user?.status);
 
     otherOnlineRows.push({
       id,
       name: user.username ?? user.name ?? "User",
       invited: serverInvited || inviteRequestPending || loading,
       loading,
+      presenceKey: rowPresenceKey,
+      presenceLabel: toPresenceLabel(rowPresenceKey),
       joined,
     });
   }
@@ -214,6 +230,7 @@ function WaitingLobbyContent() {
   const api = useApi();
   const { value: token } = useLocalStorage<string>("token", "");
   const { value: userId } = useLocalStorage<string>("userId", "");
+  const { set: setActiveSessionId } = useLocalStorage<string>("activeSessionId", "");
 
   const onlineUsers = useOnlineUsersTopic();
   const { sentEntries, loadSent, markPending } = useOutgoingInviteStatuses(
@@ -414,15 +431,16 @@ function WaitingLobbyContent() {
       return;
     }
 
+    const pollMs = lobbyWsConnected ? 5000 : 2500;
     const pollId = setInterval(() => {
       void loadView();
       void loadSent();
-    }, LIVE_REFRESH_MS);
+    }, pollMs);
 
     return () => {
       clearInterval(pollId);
     };
-  }, [token, sessionIdParam, loadView, loadSent]);
+  }, [token, sessionIdParam, loadView, loadSent, lobbyWsConnected]);
 
   const waitingPlayers = useMemo(
     () =>
@@ -481,10 +499,14 @@ function WaitingLobbyContent() {
     return usernames;
   }, [waitingPlayers]);
 
+  const usersForInvite = useMemo(() => {
+    return onlineUsers;
+  }, [onlineUsers]);
+
   const inviteRows = useMemo(
     () =>
       buildPublicLobbyPlayers(
-        onlineUsers,
+        usersForInvite,
         userId,
         sentEntries,
         inviteLoadingById,
@@ -492,7 +514,7 @@ function WaitingLobbyContent() {
         userIsHost,
       ),
     [
-      onlineUsers,
+      usersForInvite,
       userId,
       sentEntries,
       inviteLoadingById,
@@ -507,6 +529,11 @@ function WaitingLobbyContent() {
       .filter((player) => !player.isSelf)
       .filter((player) => !usernamesAlreadyInLobby.has(normalizeValue(player.name)))
       .filter((player) => !player.joined)
+      .filter(
+        (player) =>
+          player.presenceKey !== "offline" &&
+          player.presenceKey !== "playing",
+      )
       .filter((player) => {
         if (!query) {
           return true;
@@ -568,6 +595,13 @@ function WaitingLobbyContent() {
 
   const sessionId = String(view?.sessionId ?? sessionIdParam ?? "").trim();
   const lobbyConnectionIsGreen = lobbyWsConnected;
+
+  useEffect(() => {
+    const sid = sessionId.trim();
+    if (sid) {
+      setActiveSessionId(sid);
+    }
+  }, [sessionId, setActiveSessionId]);
 
   const handleInvite = (id: number) => {
     if (!userIsHost) {
@@ -698,6 +732,7 @@ function WaitingLobbyContent() {
             <div className="lobby-intro-copy">
               <span>Welcome to Lobby {sessionId || "----"}.</span>
               {userIsHost ? <span>As the host you can invite up to 3 players.</span> : null}
+              {/*host vs other players see diff things*/}
             </div>
           </Card>
 
@@ -726,15 +761,13 @@ function WaitingLobbyContent() {
                       {slot.label}
                     </span>
                   </div>
-                  <Button
-                    className={`create-lobby-player-action lobby-slot-status-btn${slot.status === "Host" ? " lobby-slot-status-host" : ""}${slot.status === "Joined" ? " lobby-slot-status-joined" : ""}${slot.status === "Open" ? " lobby-slot-status-open" : ""}`}
-                    type="default"
-                    disabled
+                  <span
+                    className={`lobby-slot-status-pill lobby-slot-status-btn${slot.status === "Host" ? " lobby-slot-status-host" : ""}${slot.status === "Joined" ? " lobby-slot-status-joined" : ""}${slot.status === "Open" ? " lobby-slot-status-open" : ""}`}
                   >
                     {slot.status === "Host" ? `Host ${HOST_CROWN}` : slot.status}
-                  </Button>
+                  </span>
                   <div className="lobby-slot-actions">
-                    {userIsHost && slot.occupied && !slot.isHost ? (
+                    {userIsHost && slot.occupied && !slot.isHost ? ( // only host can kick in this lobby type
                       <Popconfirm
                         title={`Do you really want to kick ${slot.label}?`}
                         okText="YES, KICK HIM"
@@ -765,57 +798,63 @@ function WaitingLobbyContent() {
               )}
             />
           </Card>
-
-          <Card
-            title={
-              <div className="lobby-section-title-row">
-                <span className="lobby-section-title">Invite</span>
-              </div>
-            }
-            className={`dashboard-container${!userIsHost ? " lobby-controls-disabled" : ""}`}
-          >
-            <Collapse
-              className={`lobby-invite-collapse${!userIsHost ? " lobby-invite-collapse-disabled" : ""}`}
-              items={[
-                {
-                  key: "invite-online-players",
-                  label: "Invite Online Players",
-                  children: (
-                    <List
-                      header={
-                        <Input
-                          className="lobby-invite-search"
-                          placeholder="Search online players"
-                          value={inviteSearch}
-                          allowClear
-                          disabled={!userIsHost}
-                          onChange={(event) => setInviteSearch(event.target.value)}
-                        />
-                      }
-                      dataSource={filteredInviteRows}
-                      locale={{
-                        emptyText: inviteSearch.trim()
-                          ? "No players match your search"
-                          : "No players available",
-                      }}
-                      rowKey={(player) => String(player.id)}
-                      renderItem={(player) => (
-                        <List.Item className="create-lobby-player-row">
-                          <div className="lobby-slot-label">
-                            <span>{player.name}</span>
-                            {player.loading ? (
-                              <Spin size="small" className="create-lobby-spin" />
-                            ) : null}
-                          </div>
-                          <div>
+          
+          {userIsHost ? ( // host vs other players see diff things
+            <Card
+              title={
+                <div className="lobby-section-title-row">
+                  <span className="lobby-section-title">Invite</span>
+                </div>
+              }
+              className="dashboard-container"
+            >
+              <Collapse
+                className="lobby-invite-collapse"
+                items={[
+                  {
+                    key: "invite-online-players",
+                    label: "Invite Online Players",
+                    children: (
+                      <List
+                        header={
+                          <Input
+                            className="lobby-invite-search"
+                            placeholder="Search players by Username"
+                            value={inviteSearch}
+                            allowClear
+                            onChange={(event) => setInviteSearch(event.target.value)}
+                          />
+                        }
+                        dataSource={filteredInviteRows}
+                        locale={{
+                          emptyText: inviteSearch.trim()
+                            ? "No players match your search"
+                            : "No players available",
+                        }}
+                        rowKey={(player) => String(player.id)}
+                        renderItem={(player) => (
+                          <List.Item className="create-lobby-player-row">
+                            <div className="lobby-slot-label">
+                              <span>{player.name}</span>
+                              {player.loading ? (
+                                <Spin size="small" className="create-lobby-spin" />
+                              ) : null}
+                            </div>
+                            <span
+                              className={`users-status-pill users-status-${player.presenceKey} lobby-invite-status-pill`}
+                            >
+                              {player.presenceLabel}
+                            </span>
                             <Button
                               className={`create-lobby-player-action${player.joined ? " lobby-invite-joined-btn" : ""}`}
                               type={player.invited || player.joined ? "default" : "primary"}
                               disabled={
-                                !userIsHost ||
                                 player.invited ||
                                 !token.trim() ||
                                 !sessionId ||
+                                (!player.invited &&
+                                  !player.joined &&
+                                  !canInvitePresence(player.presenceKey)) ||
                                 (!player.invited &&
                                   activeInviteCount >= MAX_ACTIVE_INVITES)
                               }
@@ -827,46 +866,47 @@ function WaitingLobbyContent() {
                                   ? "Invited"
                                   : "Invite"}
                             </Button>
-                          </div>
-                          <div />
-                        </List.Item>
-                      )}
-                    />
-                  ),
-                },
-              ]}
-            />
-          </Card>
+                          </List.Item>
+                        )}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            </Card>
+          ) : null}
 
-          <Card
-            title={
-              <div className="lobby-section-title-row">
-                <span className="lobby-section-title">Settings</span>
+          {userIsHost ? ( //host vs other players see diff things
+            <Card
+              title={
+                <div className="lobby-section-title-row">
+                  <span className="lobby-section-title">Settings</span>
+                </div>
+              }
+              className="dashboard-container"
+            >
+              <div className="create-lobby-actions">
+                <div className="create-lobby-privacy-toggle">
+                  <span>Invite only</span>
+                  <Switch
+                    className="lobby-private-switch"
+                    checked={!isPublicLobby}
+                    onChange={handlePrivacyToggle}
+                    checkedChildren="Yes"
+                    unCheckedChildren="No"
+                  />
+                </div>
               </div>
-            }
-            className={`dashboard-container${!userIsHost ? " lobby-controls-disabled" : ""}`}
-          >
-            <div className="create-lobby-actions">
-              <div className="create-lobby-privacy-toggle">
-                <span>Invite only</span>
-                <Switch
-                  className="lobby-private-switch"
-                  checked={!isPublicLobby}
-                  onChange={handlePrivacyToggle}
-                  checkedChildren="Yes"
-                  unCheckedChildren="No"
-                  disabled={!userIsHost}
-                />
-              </div>
-            </div>
-          </Card>
+            </Card>
+          ) : null}
 
           <Card className="dashboard-container">
             <div className="create-lobby-actions">
-              {userIsHost ? (
+              {userIsHost ? ( //host vs other players see diff things
                 <Button
                   type="primary"
                   className="create-lobby-start-game-btn"
+                  disabled={presentCount < 2}
                   onClick={() => router.push("/game")}
                 >
                   Start Game
@@ -885,6 +925,13 @@ function WaitingLobbyContent() {
                       : "Ready Up"}
                 </Button>
               )}
+              <Button
+                type="primary"
+                className="lobby-leave-btn"
+                disabled
+              >
+                Leave Lobby
+              </Button>
             </div>
           </Card>
         </div>

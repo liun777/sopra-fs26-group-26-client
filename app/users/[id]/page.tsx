@@ -1,110 +1,190 @@
-"use client";
-// your code here for S2 to display a single user profile after having clicked on it
-// each user has their own slug /[id] (/1, /2, /3, ...) and is displayed using this file
-// try to leverage the component library from antd by utilizing "Card" to display the individual user
-// import { Card } from "antd"; // similar to /app/users/page.tsx 
+"use client"; // all users, even oneself, uses this page now, reworked as a result
 
+import React, { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useApi } from "@/hooks/useApi";
+import useLocalStorage from "@/hooks/useLocalStorage";
+import { User } from "@/types/user";
+import { Button, Card, Input } from "antd";
 
-// For components that need React hooks and browser APIs,
-// SSR (server side rendering) has to be disabled.
-// Read more here: https://nextjs.org/docs/pages/building-your-application/rendering/server-side-rendering
+const DEFAULT_BIO = "This player hasn't added a bio yet."; //placeholder default text
+const BIO_MAX_LENGTH = 180; // can be changed
 
+const UserProfilePage: React.FC = () => {
+  const router = useRouter();
+  const params = useParams<{ id?: string }>();
+  const apiService = useApi();
 
-import { useRouter, useParams } from "next/navigation"; // für navigieren zwischen seiten (userouter) und um zb id aus url zu holen (useparams)
-import { useApi } from "@/hooks/useApi"; // für die requeests ans backend
-import useLocalStorage from "@/hooks/useLocalStorage"; // speichert daten im browser damit user eingeloggt belibt
-import { User } from "@/types/user"; // definiert wie userobjekt aussieht also id status, username etc
-import { Button, Card } from "antd"; // beinhaltet ui komponeneten
-import React, { useEffect, useState } from "react"; // useeffect führt code aus, use react speichert daten wie zb user
+  const { value: storedUserId } = useLocalStorage<string>("userId", "");
 
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editingBio, setEditingBio] = useState(false);
+  const [bioDraft, setBioDraft] = useState("");
 
-// wenn profilseite geladen wird werden daten des users vom backend geholt und gespeichert, damit sie angezeigt werden können
-const Profile = () => {
-    const router = useRouter(); // zu anderen seiten navigieren
-    const params = useParams(); // id aus url holen
-    const apiService = useApi(); // zugriff zum api service für requests ans backend
-    const [user, setUser] = useState<User | null>(null); // erstellt eine intial leere user variable, die später mit setuser befüllt wird
-    const { value: userId } = useLocalStorage<string>("userId", ""); // holt userid aus browserspeicher, um später zu prüfen ob man sein eigenes profil sieht
+  const viewedUserId = String(params?.id ?? "").trim();
+  const ownUserId = String(storedUserId ?? "").trim();
+  const isOwnProfile = viewedUserId.length > 0 && ownUserId === viewedUserId;
 
-    // läuft automatisch, wenn seite geladen wird
-    useEffect(() => {
-        const fetchUser = async () => { // async = wartet auf antwort vom backend
-            try {
-                const fetchedUser: User = await apiService.get<User>(`/users/${params.id}`); // schickt get request ans backend mit id aus url und backend sucht das dann
-                // schickt get users ans backend und backend sucht diesen spezifischen user in der datenbank und zeigt ihn an
-                setUser(fetchedUser); // speichert den geg user
-            } catch (error) { // falls user nicht gefunden wird, soll es fehlermeldung geben
-                if (error instanceof Error) {
-                    alert(`User not found..:\n${error.message}`);
-                }
-            }
-        };
-        fetchUser();
-    }, [apiService, params.id]); // wenn id in url ändert läuft funktion neu
+  useEffect(() => {
+    if (!viewedUserId) {
+      router.replace("/users");
+      return;
+    }
 
+    let active = true;
 
+    const fetchUser = async () => {
+      setLoading(true);
+      try {
+        const fetched = await apiService.get<User>(`/users/${encodeURIComponent(viewedUserId)}`);
+        if (!active) {
+          return;
+        }
+        setUser(fetched);
+        setBioDraft((fetched.bio ?? "").trim() || DEFAULT_BIO);
+      } catch (error) {
+        if (active && error instanceof Error) {
+          alert(`Could not load profile:\n${error.message}`);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
 
+    void fetchUser();
 
-// was auf der seite angezeigt wird
-    return (
-        <div className="cabo-background">
-            <div className="login-container">
-                <Card
-                    title="Spy on this User"
-                    loading={!user}
-                    className="dashboard-container"
-                >
-                    {user && (
-                        <>
-                            <div style={{ textAlign: "center", marginBottom: 24 }}>
-                                <p><strong>Username:</strong> {user.username}</p>
-                                <p><strong>Status:</strong> {user.status}</p>
-                                <p><strong>Bio:</strong> {user.bio}</p>
-                                <p><strong>Creation Date:</strong> {user.creationDate}</p>
-                                <p><strong>Games Won:</strong> {user.gamesWon ?? "No games played"}</p>
-                                <p><strong>Average Score:</strong> {user.averageScorePerRound ?? "No games played"}</p>
-                                <p><strong>Overall Rank:</strong> {user.overallRank ?? "No games played"}</p>
-                            </div>
+    return () => {
+      active = false;
+    };
+  }, [apiService, viewedUserId, router]);
 
-                            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 32 }}>
-                                <Button
-                                    type="primary"
-                                    onClick={() => router.push("/users")}
-                                    style={{ backgroundColor: "#da5885", borderColor: "#da5885" }}
-                                    onMouseEnter={(e) => {
-                                        (e.currentTarget as HTMLElement).style.backgroundColor = "#b10660";
-                                        (e.currentTarget as HTMLElement).style.borderColor = "#b10660";
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        (e.currentTarget as HTMLElement).style.backgroundColor = "#da5885";
-                                        (e.currentTarget as HTMLElement).style.borderColor = "#da5885";
-                                    }}
-                                >
-                                    Back to User Overview
-                                </Button>
-                                {String(userId) === String(params.id) && (
-                                    <Button
-                                        type="default"
-                                        onClick={() => router.push(`/users/${params.id}/edit`)}
-                                        style={{ border: "none" }}
-                                        onMouseEnter={(e) => {
-                                            (e.currentTarget as HTMLElement).style.color = "#b10660";
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            (e.currentTarget as HTMLElement).style.color = "";
-                                        }}
-                                    >
-                                        Change password
-                                    </Button>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </Card>
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/dashboard");
+  };
+
+  const creationDate = user?.creationDate ?? "-";
+  const wins = Number(user?.gamesWon ?? 0);
+  const gamesPlayedRaw = (
+    user as User & { gamesPlayed?: number | null; games?: number | null }
+  )?.gamesPlayed ?? (
+    user as User & { gamesPlayed?: number | null; games?: number | null }
+  )?.games ?? 0;
+  const gamesPlayed = Number.isFinite(Number(gamesPlayedRaw))
+    ? Number(gamesPlayedRaw)
+    : 0;
+  const winRatePct = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
+  const winRateText = Number(winRatePct).toFixed(1).replace(/\.0$/, "");
+  const winsGamesSummary = `${wins}/${gamesPlayed} (${winRateText}%)`;
+  const averageScore = user?.averageScorePerRound ?? "-";
+  const rank = user?.overallRank ?? "-";
+  const shownBio = (user?.bio ?? "").trim() || DEFAULT_BIO;
+  const isDefaultBio = shownBio === DEFAULT_BIO;
+
+  return (
+    <div className="cabo-background">
+      <div className="login-container">
+        <div className="create-lobby-stack dashboard-stack">
+          <Card
+            loading={loading}
+            className="dashboard-container"
+            title={<div className="dashboard-section-title">User Profile</div>}
+          >
+            {!loading && user ? (
+              <div className="profile-grid">
+                <div className="profile-row">
+                  <span className="profile-key">Username</span>
+                  <span className="profile-value">{user.username ?? "-"}</span>
+                </div>
+                <div className="profile-row">
+                  <span className="profile-key">Creation Date</span>
+                  <span className="profile-value">{creationDate}</span>
+                </div>
+                <div className="profile-row">
+                  <span className="profile-key">Wins/Games</span>
+                  <span className="profile-value">{winsGamesSummary}</span>
+                </div>
+                <div className="profile-row">
+                  <span className="profile-key">Average Score per Round</span>
+                  <span className="profile-value">{averageScore}</span>
+                </div>
+                <div className="profile-row">
+                  <span className="profile-key">Overall Rank</span>
+                  <span className="profile-value">{rank}</span>
+                </div>
+
+                <div className="profile-bio-block">
+                  <div className="profile-bio-head">
+                    <span className="profile-key">Bio</span>
+                    {isOwnProfile && !editingBio ? (
+                      <Button
+                        type="default"
+                        className="profile-bio-edit-btn"
+                        onClick={() => {
+                          setBioDraft(shownBio);
+                          setEditingBio(true);
+                        }}
+                      >
+                        Edit 
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  {isOwnProfile && editingBio ? ( //can only see edit and edit if own profile
+                    <div className="profile-bio-editor">
+                      <Input.TextArea
+                        rows={4}
+                        value={bioDraft}
+                        onChange={(event) => setBioDraft(event.target.value)}
+                        maxLength={BIO_MAX_LENGTH}
+                        showCount
+                        placeholder="Write a short bio"
+                      />
+                      <div className="profile-bio-actions">
+                        <Button
+                          type="primary"
+                          disabled
+                        >
+                          Save Bio
+                        </Button>
+                        <Button
+                          type="default"
+                          onClick={() => {
+                            setEditingBio(false);
+                            setBioDraft(shownBio);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className={`profile-bio-text${isDefaultBio ? " profile-bio-text-placeholder" : ""}`}>
+                      {shownBio}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </Card>
+
+          <Card className="dashboard-container">
+            <div className="dashboard-button-stack">
+              <Button type="default" onClick={handleBack}>
+                {"\u2190"} Back
+              </Button>
             </div>
+          </Card>
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
-
-export default Profile;
+export default UserProfilePage;

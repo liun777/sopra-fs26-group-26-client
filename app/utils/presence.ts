@@ -1,0 +1,37 @@
+// added for lobby status, due to complexity
+export type PresenceKey = "online" | "offline" | "lobby" | "playing" | "unknown";
+
+// Strict parsing to avoid accidental format variants.
+export function toPresenceKey(raw: unknown): PresenceKey {
+  const status = String(raw ?? "").trim();
+
+  switch (status) {
+    case "ONLINE":
+      return "online";
+    case "OFFLINE":
+      return "offline";
+    case "LOBBY":
+      return "lobby";
+    case "PLAYING":
+      return "playing";
+    case "UNKNOWN":
+      return "unknown";
+    default:
+      return "unknown";
+  }
+}
+
+export function toPresenceLabel(presence: PresenceKey): string {
+  switch (presence) {
+    case "online":
+      return "Online";
+    case "offline":
+      return "Offline";
+    case "lobby":
+      return "Lobby";
+    case "playing":
+      return "Playing";
+    default:
+      return "Unknown";
+  }
+}

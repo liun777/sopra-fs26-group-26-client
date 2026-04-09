@@ -1,5 +1,5 @@
 # Build image
-FROM node:22.14.0 AS build
+FROM node:20 AS build
 # Set container working directory to /app
 WORKDIR /app
 # Copy npm instructions
@@ -11,12 +11,12 @@ RUN npm ci --loglevel=error
 # Copy app (useless stuff is ignored by .dockerignore)
 COPY . .
 # Build the app
-RUN npm run build
+RUN node --no-opt ./node_modules/next/dist/bin/next build
 # Delete all non-production dependencies to make copy in line 28 more efficient
 RUN npm prune --production
 
 # Use small production image
-FROM node:22.14.0-alpine
+FROM node:20-alpine
 # Set the env to "production"
 ENV NODE_ENV=production
 # Set npm cache to a directory the non-root user can access

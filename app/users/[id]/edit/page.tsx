@@ -10,10 +10,6 @@ import { useApi } from "@/hooks/useApi"; // für putequest ans backend
 import useLocalStorage from "@/hooks/useLocalStorage"; // um token und userId zu löschen bei ausloggen
 import { Button, Form, Input } from "antd"; // ui komponenten
 
-interface FormFieldProps {
-    password: string; // nur neues passwort wird gebraucht
-}
-
 const EditPassword: React.FC = () => {
     const router = useRouter(); // für Navigation zu anderen Seiten
     const params = useParams(); // holt id aus der URL
@@ -30,7 +26,7 @@ const EditPassword: React.FC = () => {
         }
         try {
             // schickt putrequest zum backend mit neuem Passwort
-            await apiService.put(`/users/${params.id}`, { status: "OFFLINE", password: password });
+            await apiService.put(`/users/${params.id}`, { password: password });
 
             // nach änderung werden token und userid gelöscht
             clearToken();
@@ -62,7 +58,9 @@ const EditPassword: React.FC = () => {
                         name="password"
                         label="Enter your new password"
                     >
-                        <Input type="password" placeholder="Enter new password"
+                        <Input
+                               type="password"
+                               placeholder="Enter new password"
                                onChange={(e) => form.setFieldValue("password", e.target.value)}
                         />
                     </Form.Item>
@@ -74,17 +72,8 @@ const EditPassword: React.FC = () => {
                     <Form.Item>
                         {/* zurück zum Profil ohne zu speichern */}
                         <Button
-                            type="link"
+                            type="default"
                             onClick={() => router.push(`/users/${params.id}`)}
-                            style={{ color: "#b10660", fontSize: "12px", display: "block", margin: "0 auto" }}
-                            onMouseEnter={(e) => {
-                                (e.currentTarget as HTMLElement).style.color = "#ffb1d4";
-                                (e.currentTarget as HTMLElement).style.fontWeight = "bold";
-                            }}
-                            onMouseLeave={(e) => {
-                                (e.currentTarget as HTMLElement).style.color = "#b10660";
-                                (e.currentTarget as HTMLElement).style.fontWeight = "normal";
-                            }}
                         >
                             Nope, changed my mind
                         </Button>

@@ -2,9 +2,16 @@ import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { User } from "@/types/user";
 import { getStompBrokerUrl } from "@/utils/domain";
+import { toPresenceKey } from "@/utils/presence";
 import { Client, IMessage } from "@stomp/stompjs";
 import { useEffect, useState } from "react";
 import SockJS from "sockjs-client";
+
+const ONLINE_USERS_REFRESH_MS = 2500; // CAN BE CHANGED, ITS REFRESH RATE FOR USER LIST
+
+function isOnlineStatus(raw: unknown): boolean {
+  return toPresenceKey(raw) === "online";
+}
 
 function parseOnlineUsersJson(body: string): User[] {
   const arr = JSON.parse(body) as unknown[];
@@ -41,7 +48,7 @@ export function useOnlineUsersTopic(): User[] {
       try {
         const all = await api.get<User[]>("/users");
         if (!cancelled) {
-          setOnlineUsers(all.filter((u) => u.status === "ONLINE"));
+          setOnlineUsers(all.filter((u) => isOnlineStatus(u.status)));
         }
       } catch {
         if (!cancelled) {
@@ -51,6 +58,9 @@ export function useOnlineUsersTopic(): User[] {
     };
 
     void refreshFromRest();
+    const pollId = setInterval(() => {
+      void refreshFromRest();
+    }, ONLINE_USERS_REFRESH_MS);
     const t = token.trim();
 
     // use SockJS instead of raw WebSocket
@@ -93,6 +103,7 @@ export function useOnlineUsersTopic(): User[] {
 
     return () => {
       cancelled = true;
+      clearInterval(pollId);
       if (client) {
         void client.deactivate();
       }

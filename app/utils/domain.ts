@@ -6,8 +6,21 @@ import { isProduction } from "@/utils/environment";
  * In development, it returns "http://localhost:8080".
  */
 export function getApiDomain(): string {
-  const prodUrl = process.env.NEXT_PUBLIC_PROD_API_URL ||
-    "https://sopra-fs26-group-26-server.oa.r.appspot.com"; // updated!
+  const explicitUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  // Local Docker / local browser testing should still use local backend by default.
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://localhost:8080";
+    }
+  }
+
+  const prodUrl = process.env.NEXT_PUBLIC_PROD_API_URL?.trim() ||
+    "https://sopra-fs26-group-26-server.oa.r.appspot.com";
   const devUrl = "http://localhost:8080";
   return isProduction() ? prodUrl : devUrl;
 }

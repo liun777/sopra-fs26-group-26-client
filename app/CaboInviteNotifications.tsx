@@ -2,7 +2,8 @@
 
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
-import { useRouter } from "next/navigation";
+import type { ApplicationError } from "@/types/error";
+import { usePathname, useRouter } from "next/navigation";
 import { getStompBrokerUrl } from "@/utils/domain";
 import { Client } from "@stomp/stompjs";
 import { Button, Space } from "antd";
@@ -35,16 +36,19 @@ type InviteRespondBody = { waitingLobbySessionId?: string | null };
 
 export default function CaboInviteNotifications() {
   const router = useRouter();
+  const pathname = usePathname();
   const api = useApi();
   const { value: token } = useLocalStorage<string>("token", "");
   const { value: userId } = useLocalStorage<string>("userId", "");
   const [pending, setPending] = useState<CaboInvitePending[]>([]);
   const [responding, setResponding] = useState(false);
+  const isAuthRoute =
+    pathname === "/" || pathname === "/login" || pathname === "/register";
 
   const loadPending = useCallback(async () => {
     const t = token.trim();
     const uid = String(userId).trim();
-    if (!t || !uid) {
+    if (isAuthRoute || !t || !uid) {
       setPending([]);
       return;
     }
@@ -57,12 +61,12 @@ export default function CaboInviteNotifications() {
     } catch {
       setPending([]);
     }
-  }, [api, token, userId]);
+  }, [api, token, userId, isAuthRoute]);
 
   useEffect(() => {
     const t = token.trim();
     const uid = String(userId).trim();
-    if (!t || !uid) {
+    if (isAuthRoute || !t || !uid) {
       setPending([]);
       return;
     }
@@ -84,7 +88,7 @@ export default function CaboInviteNotifications() {
     return () => {
       void client.deactivate();
     };
-  }, [token, userId, loadPending]);
+  }, [token, userId, loadPending, isAuthRoute]);
 
   const current = pending[0];
 
@@ -109,14 +113,20 @@ export default function CaboInviteNotifications() {
           `/lobby/${encodeURIComponent(String(body.waitingLobbySessionId))}`, //updated to use encodeURIComponents
         );
       }
-    } catch {
+    } catch (error: unknown) {
+      const status = (error as ApplicationError)?.status;
+      if (decision === "ACCEPT" && status === 409) {
+        alert("Lobby full. This lobby already has 4 players."); // added error msg for full lobbies // maybe add later question if want to join as spectator
+      } else if (decision === "ACCEPT" && status === 404) {
+        alert("Lobby not found anymore.");
+      }
       /* keep popup until user retries or server ok */
     } finally {
       setResponding(false);
     }
   };
 
-  if (!current) return null;
+  if (isAuthRoute || !current) return null;
 
   return (
     <div className="cabo-invite-corner" role="status" aria-live="polite">

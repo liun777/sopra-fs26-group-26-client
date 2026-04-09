@@ -9,8 +9,9 @@ import { Button, Form, Input } from "antd";
 interface FormFieldProps {
     username: string;
     password: string;
-    bio: string;
+    bio?: string;
 }
+const USERNAME_MAX_LENGTH = 24; // CAN CHANGE USERNAME LENGTH LIMIT >>> FIX IN BACKEND TOO
 
 const Register: React.FC = () => {
     const router = useRouter();
@@ -21,7 +22,15 @@ const Register: React.FC = () => {
 
     const handleRegister = async (values: FormFieldProps) => {
         try {
-            const response = await apiService.post<User>("/users", values);
+            const normalizedBio = values.bio?.trim();
+            const payload = {
+                ...values,
+                bio: normalizedBio && normalizedBio.length > 0
+                    ? normalizedBio
+                    : "This player hasn't added a bio yet.",
+            };
+
+            const response = await apiService.post<User>("/users", payload);
 
             if (response.token) {
                 setToken(response.token);
@@ -41,7 +50,10 @@ return (
     <div className="cabo-background">
         <div className="login-container">
             <div className="form-card">
-                <h1>Register</h1>
+                <div className="auth-form-header">
+                  <h1>Register</h1>
+                </div>
+                <div className="auth-form-divider" />
                 <Form
                     form={form}
                     name="register"
@@ -49,27 +61,39 @@ return (
                     variant="outlined"
                     onFinish={handleRegister}
                     layout="vertical"
+                    requiredMark={false}
                 >
                     <Form.Item
                         name="username"
-                        label="Username"
-                        rules={[{ required: true, message: "Please input your username!" }]}
+                        label={<span className="form-label-required">Username<span className="form-label-required-star">*</span></span>}
+                        rules={[
+                            { required: true, message: "Please input your username!" },
+                            {
+                                max: USERNAME_MAX_LENGTH,
+                                message: `Username can be max ${USERNAME_MAX_LENGTH} characters.`,
+                            },
+                        ]}
                     >
-                        <Input placeholder="Enter username" />
+                        <Input
+                            placeholder="Enter username"
+                            maxLength={USERNAME_MAX_LENGTH}
+                        />
                     </Form.Item>
                     <Form.Item
                         name="password"
-                        label="Password"
+                        label={<span className="form-label-required">Password<span className="form-label-required-star">*</span></span>}
                         rules={[{ required: true, message: "Please input your password!" }]}
                     >
-                        <Input.Password placeholder="Enter password" />
+                        <Input
+                          type="password"
+                          placeholder="Enter password"
+                        />
                     </Form.Item>
                     <Form.Item
                         name="bio"
                         label="Bio"
-                        rules={[{ required: true, message: "Please input your bio!" }]}
                     >
-                        <Input placeholder="Enter bio" />
+                        <Input placeholder="Optional (you can add this later)" />
                     </Form.Item>
                     <Form.Item>
                         <Button type="primary" htmlType="submit" className="login-button">
@@ -77,8 +101,13 @@ return (
                         </Button>
                     </Form.Item>
                     <Form.Item>
-                        <Button type="link" onClick={() => router.push("/login")}>
-                            Login here!
+                        <Button
+                          type="default"
+                          className="auth-secondary-nav-btn"
+                          onClick={() => router.push("/login")}
+                        >
+                            {"Login here \u2197"}
+                            {/* this unicode makes it visually clear it opens a new page */}
                         </Button>
                     </Form.Item>
                 </Form>
@@ -88,4 +117,3 @@ return (
 );
 };
 export default Register;
-

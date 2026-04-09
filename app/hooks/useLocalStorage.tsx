@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface LocalStorage<T> {
   value: T;
@@ -25,20 +25,35 @@ export default function useLocalStorage<T>(
   key: string,
   defaultValue: T,
 ): LocalStorage<T> {
-  const [value, setValue] = useState<T>(defaultValue);
+  const readStoredValue = useCallback((): T => {
+    if (typeof window === "undefined") {
+      return defaultValue;
+    }
 
-  // On mount, try to read the stored value
-  useEffect(() => {
-    if (typeof window === "undefined") return; // SSR safeguard
     try {
       const stored = globalThis.localStorage.getItem(key);
-      if (stored) {
-        setValue(JSON.parse(stored) as T);
+      if (!stored) {
+        return defaultValue;
+      }
+
+      try {
+        return JSON.parse(stored) as T;
+      } catch {
+        // fallback for legacy plain-string values that were not JSON-stringified
+        return stored as T;
       }
     } catch (error) {
       console.error(`Error reading localStorage key "${key}":`, error);
+      return defaultValue;
     }
-  }, [key]);
+  }, [defaultValue, key]);
+
+  const [value, setValue] = useState<T>(readStoredValue);
+
+  // On mount, try to read the stored value
+  useEffect(() => {
+    setValue(readStoredValue());
+  }, [readStoredValue]);
 
   // Simple setter that updates both state and localStorage
   const set = (newVal: T) => {
@@ -48,7 +63,7 @@ export default function useLocalStorage<T>(
     }
   };
 
-  // Removes the key from localStorage and resets the state
+  // Removes key from localStorage and resets state
   const clear = () => {
     setValue(defaultValue);
     if (typeof window !== "undefined") {

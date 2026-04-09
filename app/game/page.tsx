@@ -15,8 +15,9 @@ interface Card {
 
 const Game = () => {
   const apiService = useApi();
-  const isSpectator = true; // TODO: replace with real logic
-  const gameId = "TODO_REPLACE_WITH_REAL_GAME_ID";
+  const { value: activeSessionId } = useLocalStorage<string>("activeSessionId", "");
+  const isSpectator = false;
+  const gameId = activeSessionId.trim();
 
 
 
@@ -25,6 +26,11 @@ const Game = () => {
 
       //get the top card from the backend
       useEffect(() => {
+          if (!gameId) {
+              setDiscardTopCard(null);
+              return;
+          }
+
           const fetchDiscardTopCard = async () => {
               try {
                   const card = await apiService.get<Card>(
@@ -40,14 +46,14 @@ const Game = () => {
       }, [apiService, gameId]);
 
   //# 8: Implement a global isMyTurn state that disables all buttons and click listeners on the game board when false.
-  // first we get the userID out of the local storage
+      // 1st we get userID out of local storage
       const { value: userId } = useLocalStorage<string>("userId", "");
 
       // isMyTurn State
       const [isMyTurn, setIsMyTurn] = useState<boolean>(false);
 
 
-      // then we see if it is the useres turn
+      // then we see if it is useres turn
       useEffect(() => {
           const fetchIsMyTurn = async () => {
               try {
@@ -102,7 +108,7 @@ const Game = () => {
                               <CardComponent
                                     hidden={true}
                                     size="medium"
-                                    onClick={() => console.log("draw card")}
+                                    onClick={() => undefined}
                                     disabled={!isMyTurn}
                                 />
                               <p>Draw Pile</p>
@@ -145,7 +151,7 @@ const Game = () => {
                             key={i}
                             hidden={true}
                             size="large"
-                            onClick={() => console.log(`clicked card ${i}`)}
+                            onClick={() => undefined}
                             disabled={!isMyTurn}
                             />
                       ))}

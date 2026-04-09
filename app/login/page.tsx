@@ -9,9 +9,10 @@ import { Button, Form, Input } from "antd";
 // import styles from "@/styles/page.module.css";
 
 interface FormFieldProps {
-  label: string;
-  value: string;
+  username: string;
+  password: string;
 }
+const USERNAME_MAX_LENGTH = 24; // CAN CHANGE USERNAME LENGTH LIMIT ??? FIX IN BACKEND LATER
 
 const Login: React.FC = () => {
   const router = useRouter();
@@ -63,7 +64,10 @@ return (
     <div className="cabo-background">
         <div className="login-container">
             <div className="form-card">
-                <h1>Login</h1>
+                <div className="auth-form-header">
+                  <h1>Login</h1>
+                </div>
+                <div className="auth-form-divider" />
                 <Form
                     form={form}
                     name="login"
@@ -71,20 +75,33 @@ return (
                     variant="outlined"
                     onFinish={handleLogin}
                     layout="vertical"
+                    requiredMark={false}
                 >
                     <Form.Item
                         name="username"
-                        label="Username"
-                        rules={[{ required: true, message: "Please input your username!" }]}
+                        label={<span className="form-label-required">Username<span className="form-label-required-star">*</span></span>}
+                        rules={[
+                          { required: true, message: "Please input your username!" },
+                          {
+                            max: USERNAME_MAX_LENGTH,
+                            message: `Username can be max ${USERNAME_MAX_LENGTH} characters.`,
+                          },
+                        ]}
                     >
-                        <Input placeholder="Enter username" />
+                        <Input
+                          placeholder="Enter username"
+                          maxLength={USERNAME_MAX_LENGTH}
+                        />
                     </Form.Item>
                     <Form.Item
                         name="password"
-                        label="Password"
+                        label={<span className="form-label-required">Password<span className="form-label-required-star">*</span></span>}
                         rules={[{ required: true, message: "Please input your password!" }]}
                     >
-                        <Input.Password placeholder="Enter password" />
+                        <Input
+                          type="password"
+                          placeholder="Enter password"
+                        />
                     </Form.Item>
                     <Form.Item>
                         <Button type="primary" htmlType="submit" className="login-button">
@@ -92,8 +109,13 @@ return (
                         </Button>
                     </Form.Item>
                     <Form.Item>
-                        <Button type="link" onClick={() => router.push("/register")}>
-                            Register here!
+                        <Button
+                          type="default"
+                          className="auth-secondary-nav-btn"
+                          onClick={() => router.push("/register")}
+                        >
+                            {"Register here \u2197"}
+                            {/*this unicode makes it visually clear it opens a new page*/}
                         </Button>
                     </Form.Item>
                 </Form>
@@ -104,4 +126,3 @@ return (
 };
 
 export default Login;
-
