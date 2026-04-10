@@ -13,6 +13,7 @@ export function toPresenceKey(raw: unknown): PresenceKey {
     case "LOBBY":
       return "lobby";
     case "PLAYING":
+    case "IN_GAME": // REMOVE LATER, hopefully they all switch to PLAYING
       return "playing";
     case "UNKNOWN":
       return "unknown";

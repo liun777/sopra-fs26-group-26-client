@@ -11,7 +11,7 @@ interface FormFieldProps {
     password: string;
     bio?: string;
 }
-const USERNAME_MAX_LENGTH = 24; // CAN CHANGE USERNAME LENGTH LIMIT >>> FIX IN BACKEND TOO
+const USERNAME_MAX_LENGTH = 16; // CAN CHANGE USERNAME LENGTH LIMIT >>> FIX IN BACKEND TOO
 
 const Register: React.FC = () => {
     const router = useRouter();

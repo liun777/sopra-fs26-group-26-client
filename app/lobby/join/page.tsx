@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import type { ApplicationError } from "@/types/error";
+import type { User } from "@/types/user";
 import { getStompBrokerUrl } from "@/utils/domain";
 import { Client } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
@@ -28,38 +29,39 @@ type OpenLobbyRow = {
     sessionId: string;
     currentPlayers: number;
     canJoin: boolean;
-    isPlaceholder?: boolean;
+    isEmptyState?: boolean;
 };
 
 const OPEN_LOBBIES_POLL_MS = 4000; // refresh rate for lobby list, don't do too low or performance eater
 const OPEN_LOBBIES_PAGE_SIZE = 10; // I wouldn't do more, or user has to scroll
 
-const PLACEHOLDER_OPEN_LOBBIES: OpenLobbyRow[] = Array.from(
-    { length: 12 },
-    (_, idx) => {
-        const players = (idx % 4) + 1;
-        const sessionId = `DEMO-${String(idx + 1).padStart(3, "0")}`;
-        return {
-            key: sessionId,
-            hostLabel: `Host ${idx + 1}`,
-            sessionId,
-            currentPlayers: players,
-            canJoin: players < 4,
-            isPlaceholder: true,
-        };
-    },
-);
+// visual fake row when there are no open lobbies
+const EMPTY_OPEN_LOBBY_ROW: OpenLobbyRow = {
+    key: "__NO_OPEN_LOBBIES__",
+    hostLabel: "",
+    sessionId: "__NO_OPEN_LOBBIES__",
+    currentPlayers: 0,
+    canJoin: false,
+    isEmptyState: true,
+};
 
-function toOpenLobbyRows(raw: unknown): OpenLobbyRow[] {
+function extractLobbyList(raw: unknown): LobbyGetDTO[] {
     const rows = Array.isArray(raw)
         ? raw
         : Array.isArray((raw as { publicLobbies?: unknown[] })?.publicLobbies)
             ? ((raw as { publicLobbies?: unknown[] }).publicLobbies ?? [])
             : [];
+    return rows.map((item) => item as LobbyGetDTO);
+}
+
+function toOpenLobbyRows(
+    raw: unknown,
+    hostUsernamesById: Record<string, string> = {},
+): OpenLobbyRow[] {
+    const rows = extractLobbyList(raw);
 
     return rows
-        .map((item) => {
-            const lobby = item as LobbyGetDTO;
+        .map((lobby) => {
             const sessionId = String(lobby?.sessionId ?? "").trim();
             const currentPlayersFromIds = Array.isArray(lobby?.playerIds)
                 ? lobby.playerIds.length
@@ -68,11 +70,15 @@ function toOpenLobbyRows(raw: unknown): OpenLobbyRow[] {
                 lobby?.currentPlayers ?? currentPlayersFromIds ?? 0,
             );
             const hostUserId = String(lobby?.sessionHostUserId ?? lobby?.hostUserId ?? "").trim();
-            const hostUsername =
+            const hostUsernameFromLobby =
                 String(lobby?.sessionHostUsername ?? lobby?.hostUsername ?? "").trim();
+            const hostUsernameFromUsers = hostUserId ? String(hostUsernamesById[hostUserId] ?? "").trim() : "";
             return {
                 sessionId,
-                hostLabel: hostUsername || (hostUserId ? `User ${hostUserId}` : "Host"),
+                hostLabel:
+                    hostUsernameFromLobby ||
+                    hostUsernameFromUsers ||
+                    (hostUserId ? `User ${hostUserId}` : "Host"),
                 currentPlayers: Number.isFinite(currentPlayers) ? currentPlayers : 0,
                 isPublic: lobby?.isPublic !== false,
             };
@@ -89,20 +95,54 @@ function toOpenLobbyRows(raw: unknown): OpenLobbyRow[] {
         .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
 }
 
+function toUsernameMap(users: User[]): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const user of users) {
+        const id = String(user?.id ?? "").trim();
+        const username = String(user?.username ?? "").trim();
+        if (id && username) {
+            out[id] = username;
+        }
+    }
+    return out;
+}
+
+function extractHostIds(raw: unknown): string[] {
+    const ids = new Set<string>();
+    for (const lobby of extractLobbyList(raw)) {
+        const hostId = String(lobby?.sessionHostUserId ?? lobby?.hostUserId ?? "").trim();
+        if (hostId) {
+            ids.add(hostId);
+        }
+    }
+    return Array.from(ids);
+}
+
+function hasMissingHostUsername(
+    hostIds: string[],
+    hostUsernamesById: Record<string, string>,
+): boolean {
+    return hostIds.some((id) => !String(hostUsernamesById[id] ?? "").trim());
+}
+
 const openLobbyColumns: TableProps<OpenLobbyRow>["columns"] = [
     {
         title: "Host",
         dataIndex: "hostLabel",
         key: "hostLabel",
         width: 170,
-        render: (value: string) => <span>{value}</span>,
+        render: (value: string, row) => (
+            <span>{row.isEmptyState ? "" : value}</span>
+        ),
     },
     {
         title: "Lobby Code",
         dataIndex: "sessionId",
         key: "sessionId",
         width: 180,
-        render: (value: string) => <span>{value}</span>,
+        render: (value: string, row) => (
+            <span>{row.isEmptyState ? "" : value}</span>
+        ),
     },
     {
         title: "Players",
@@ -110,20 +150,23 @@ const openLobbyColumns: TableProps<OpenLobbyRow>["columns"] = [
         key: "currentPlayers",
         width: 90,
         align: "right",
-        render: (value: number) => `${value}/4`,
+        render: (value: number, row) => (row.isEmptyState ? "0/0" : `${value}/4`),
     },
     {
         title: "Status",
         key: "status",
-        width: 110,
+        width: 130,
         align: "right",
-        render: (_, row) => (
-            <span
-                className={`users-status-pill ${row.canJoin ? "users-status-online" : "users-status-offline"}`}
-            >
-                {row.canJoin ? "Open" : "Full"}
-            </span>
-        ),
+        render: (_, row) =>
+            row.isEmptyState ? (
+                <span>No Open Lobbies</span>
+            ) : (
+                <span
+                    className={`users-status-pill ${row.canJoin ? "users-status-online" : "users-status-offline"}`}
+                >
+                    {row.canJoin ? "Open" : "Full"}
+                </span>
+            ),
     },
 ];
 
@@ -139,25 +182,38 @@ const LobbyJoin = () => {
     const [joiningSessionId, setJoiningSessionId] = useState<string>("");
     const [selectedOpenLobbySessionId, setSelectedOpenLobbySessionId] = useState<string>("");
     const [liveConnected, setLiveConnected] = useState(false);
+    const [hostUsernamesById, setHostUsernamesById] = useState<Record<string, string>>({});
 
     const authToken = token.trim();
 
     const loadOpenLobbies = useCallback(async () => {
         if (!authToken) {
-            setOpenLobbies(PLACEHOLDER_OPEN_LOBBIES);
+            setOpenLobbies([EMPTY_OPEN_LOBBY_ROW]);
             return;
         }
         setLoadingOpenLobbies(true);
         try {
             const response = await api.getWithAuth<unknown>("/lobbies", authToken);
-            const rows = toOpenLobbyRows(response);
-            setOpenLobbies(rows.length > 0 ? rows : PLACEHOLDER_OPEN_LOBBIES);
+            const hostIds = extractHostIds(response);
+            let nextHostUsernamesById = hostUsernamesById;
+            if (hostIds.length > 0 && hasMissingHostUsername(hostIds, hostUsernamesById)) {
+                try {
+                    const users = await api.get<User[]>("/users");
+                    const fetchedMap = toUsernameMap(users);
+                    nextHostUsernamesById = { ...hostUsernamesById, ...fetchedMap };
+                    setHostUsernamesById(nextHostUsernamesById);
+                } catch {
+                    // keep fallback host labels when user lookup is unavailable
+                }
+            }
+            const rows = toOpenLobbyRows(response, nextHostUsernamesById);
+            setOpenLobbies(rows.length > 0 ? rows : [EMPTY_OPEN_LOBBY_ROW]);
         } catch {
-            setOpenLobbies(PLACEHOLDER_OPEN_LOBBIES);
+            setOpenLobbies([EMPTY_OPEN_LOBBY_ROW]);
         } finally {
             setLoadingOpenLobbies(false);
         }
-    }, [api, authToken]);
+    }, [api, authToken, hostUsernamesById]);
 
     useEffect(() => {
         void loadOpenLobbies();
@@ -222,10 +278,15 @@ const LobbyJoin = () => {
             router.push(`/lobby/${encodeURIComponent(sessionId.trim())}`);
         } catch (error) {
             const status = (error as ApplicationError)?.status;
+            const message = error instanceof Error ? error.message : "";
             if (status === 404) {
                 alert("Lobby not found. No lobby exists with this code. Please check and try again.");
             } else if (status === 409) {
-                alert("Lobby full. This lobby already has 4 players. Please try another lobby.");
+                if (message.includes("Already in lobby")) {
+                    router.push(`/lobby/${encodeURIComponent(sessionId.trim())}`);
+                } else {
+                    alert("Lobby full. This lobby already has 4 players. Please try another lobby.");
+                }
             } else {
                 alert("Could not join lobby. Something went wrong. Please try again.");
             }
@@ -240,8 +301,8 @@ const LobbyJoin = () => {
         openLobbies.find((lobby) => lobby.sessionId === selectedOpenLobbySessionId) ?? null;
     const canJoinSelectedLobby =
         Boolean(selectedOpenLobby) &&
+        !Boolean(selectedOpenLobby?.isEmptyState) &&
         Boolean(selectedOpenLobby?.canJoin) &&
-        !Boolean(selectedOpenLobby?.isPlaceholder) &&
         !Boolean(joiningSessionId);
 
     const handleJoinSelectedLobby = async () => {
@@ -252,7 +313,7 @@ const LobbyJoin = () => {
     };
 
     const handleSpectateSelectedLobby = () => {
-        if (!selectedOpenLobby) {
+        if (!selectedOpenLobby || selectedOpenLobby.isEmptyState) {
             return;
         }
         router.push(`/spectator?sessionId=${encodeURIComponent(selectedOpenLobby.sessionId)}`);
@@ -378,7 +439,7 @@ const LobbyJoin = () => {
                             </Button>
                             <Button
                                 type="default"
-                                disabled={!selectedOpenLobby || Boolean(joiningSessionId)}
+                                disabled={!selectedOpenLobby || Boolean(selectedOpenLobby?.isEmptyState) || Boolean(joiningSessionId)}
                                 onClick={handleSpectateSelectedLobby}
                             >
                                 Join as Spectator

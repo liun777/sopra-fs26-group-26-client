@@ -361,6 +361,36 @@ h1 {
   font-style: italic;
 }
 
+.profile-results-table .ant-table-tbody > tr.profile-results-row > td {
+  vertical-align: top;
+}
+
+.profile-results-empty-text {
+  color: #cfd8e2;
+  font-style: italic;
+}
+
+.profile-results-winner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.profile-results-name {
+  display: inline-block;
+  max-width: 24ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.profile-results-crown {
+  color: #f5c84b;
+  line-height: 1;
+}
+
 .settings-form .ant-form-item-label > label {
   color: #f2f2f2 !important;
 }
@@ -492,6 +522,11 @@ h1 {
 .users-status-unknown {
   background-color: #5a5a5a;
   border-color: #4a4a4a;
+}
+
+.profile-title-status {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .join-by-code-actions-row {

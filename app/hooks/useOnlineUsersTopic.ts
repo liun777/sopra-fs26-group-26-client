@@ -10,7 +10,8 @@ import SockJS from "sockjs-client";
 const ONLINE_USERS_REFRESH_MS = 2500; // CAN BE CHANGED, ITS REFRESH RATE FOR USER LIST
 
 function isOnlineStatus(raw: unknown): boolean {
-  return toPresenceKey(raw) === "online";
+  const presence = toPresenceKey(raw);
+  return presence === "online" || presence === "lobby" || presence === "playing";
 }
 
 function parseOnlineUsersJson(body: string): User[] {

@@ -33,6 +33,11 @@ type LobbySession = {
   sessionId?: string;
 };
 
+type GameStateSignal = {
+  gameId?: string | null;
+  id?: string | null;
+};
+
 type Player = {
   id: number;
   name: string;
@@ -63,6 +68,26 @@ const KICK_ICON = "\u2716";
 
 function normalizeValue(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
+}
+
+function extractGameId(value: unknown): string {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const record = value as Record<string, unknown>;
+  const directId = String(record.gameId ?? record.id ?? "").trim();
+  if (directId) {
+    return directId;
+  }
+
+  const nestedGame = record.game;
+  if (!nestedGame || typeof nestedGame !== "object") {
+    return "";
+  }
+
+  const nestedRecord = nestedGame as Record<string, unknown>;
+  return String(nestedRecord.gameId ?? nestedRecord.id ?? "").trim();
 }
 
 function canInvitePresence(presence: PresenceKey): boolean {
@@ -249,6 +274,23 @@ function WaitingLobbyContent() {
   >({});
   const [inviteSearch, setInviteSearch] = useState("");
   const [readyByUsername, setReadyByUsername] = useState<Record<string, boolean>>({});
+  const [startingGame, setStartingGame] = useState(false);
+  const [launchingGame, setLaunchingGame] = useState(false);
+
+  const launchToGame = useCallback((rawGameId: unknown) => {
+    const gameId = String(rawGameId ?? "").trim();
+    if (!gameId) {
+      return;
+    }
+    setLaunchingGame((isAlreadyLaunching) => {
+      if (isAlreadyLaunching) {
+        return isAlreadyLaunching;
+      }
+      setActiveSessionId(gameId);
+      router.push("/game");
+      return true;
+    });
+  }, [router, setActiveSessionId]);
 
   useEffect(() => {
     const sessionId = sessionIdParam.trim();
@@ -404,6 +446,14 @@ function WaitingLobbyContent() {
         client.subscribe(`/topic/lobby/session/${sessionId}`, () => {
           void loadView();
         });
+        client.subscribe("/user/queue/game-state", (message) => {
+          try {
+            const payload = JSON.parse(String(message.body ?? "{}")) as GameStateSignal;
+            launchToGame(extractGameId(payload));
+          } catch {
+            /* ignore malformed payload */
+          }
+        });
         void loadView();
       },
       onStompError: () => {
@@ -422,7 +472,7 @@ function WaitingLobbyContent() {
       setLobbyWsConnected(false);
       void client.deactivate();
     };
-  }, [token, sessionIdParam, loadView]);
+  }, [token, sessionIdParam, loadView, launchToGame]);
 
   useEffect(() => {
     const authToken = token.trim();
@@ -680,6 +730,44 @@ function WaitingLobbyContent() {
     }));
   };
 
+  const handleStartGame = async () => {
+    if (!userIsHost || startingGame) {
+      return;
+    }
+
+    const authToken = token.trim();
+    const sid = sessionId.trim();
+    if (!authToken || !sid) {
+      return;
+    }
+
+    setStartingGame(true);
+    try {
+      const started = await api.postWithAuth<unknown>(
+        `/lobbies/${encodeURIComponent(sid)}/start`,
+        {},
+        authToken,
+      );
+      const startedGameId = extractGameId(started);
+      if (startedGameId) {
+        launchToGame(startedGameId);
+      }
+    } catch (error: unknown) {
+      const status = (error as ApplicationError)?.status;
+      if (status === 409) {
+        alert("Could not start game. Lobby is not ready.");
+      } else {
+        alert(
+          status
+            ? `Could not start game (HTTP ${status}). Please try again.`
+            : "Could not start game. Please try again.",
+        );
+      }
+    } finally {
+      setStartingGame(false);
+    }
+  };
+
   if (loading && !view) {
     return (
       <div className="cabo-background">
@@ -906,8 +994,9 @@ function WaitingLobbyContent() {
                 <Button
                   type="primary"
                   className="create-lobby-start-game-btn"
-                  disabled={presentCount < 2}
-                  onClick={() => router.push("/game")}
+                  disabled={presentCount < 2 || startingGame}
+                  loading={startingGame}
+                  onClick={() => void handleStartGame()}
                 >
                   Start Game
                 </Button>

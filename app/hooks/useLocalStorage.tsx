@@ -55,21 +55,21 @@ export default function useLocalStorage<T>(
     setValue(readStoredValue());
   }, [readStoredValue]);
 
-  // Simple setter that updates both state and localStorage
-  const set = (newVal: T) => {
+  // Simple setter updating state & localStorage
+  const set = useCallback((newVal: T) => {
     setValue(newVal);
     if (typeof window !== "undefined") {
       globalThis.localStorage.setItem(key, JSON.stringify(newVal));
     }
-  };
+  }, [key]);
 
   // Removes key from localStorage and resets state
-  const clear = () => {
+  const clear = useCallback(() => {
     setValue(defaultValue);
     if (typeof window !== "undefined") {
       globalThis.localStorage.removeItem(key);
     }
-  };
+  }, [defaultValue, key]);
 
   return { value, set, clear };
 }

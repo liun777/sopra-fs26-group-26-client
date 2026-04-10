@@ -1,14 +1,329 @@
 "use client"; // all users, even oneself, uses this page now, reworked as a result
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
+import type { ApplicationError } from "@/types/error";
 import { User } from "@/types/user";
-import { Button, Card, Input } from "antd";
+import { toPresenceKey, toPresenceLabel } from "@/utils/presence";
+import { Button, Card, Input, Table } from "antd";
+import type { TableProps } from "antd";
 
 const DEFAULT_BIO = "This player hasn't added a bio yet."; //placeholder default text
 const BIO_MAX_LENGTH = 180; // can be changed
+const RESULTS_PAGE_SIZE = 6; // can be changed
+const NO_RESULTS_TEXT = "This user has not played a game yet."; // to show a line
+const WINNER_CROWN = "\uD83D\uDC51";
+
+type ProfileResultRow = {
+  key: string;
+  lobbyCode: string;
+  playedAtText: string;
+  playedAtSort: number;
+  roundsText: string;
+  roundsSort: number | null;
+  scoreText: string;
+  scoreSort: number | null;
+  winnerName: string;
+  isWinnerCurrentUser: boolean;
+  isEmptyState?: boolean;
+};
+
+const EMPTY_RESULTS_ROW: ProfileResultRow = {
+  key: "__NO_RESULTS__",
+  lobbyCode: "-",
+  playedAtText: "-",
+  playedAtSort: 0,
+  roundsText: "-",
+  roundsSort: null,
+  scoreText: "-",
+  scoreSort: null,
+  winnerName: NO_RESULTS_TEXT,
+  isWinnerCurrentUser: false,
+  isEmptyState: true,
+};
+
+function normalizeLower(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function extractResultsArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+
+  const record = asRecord(raw);
+  if (!record) {
+    return [];
+  }
+
+  const candidates: unknown[] = [
+    record.results,
+    record.games,
+    record.history,
+    record.items,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  return [];
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toReadableScore(value: number | null): string {
+  if (value == null) {
+    return "-";
+  }
+
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
+
+  return String(Number(value.toFixed(2)).toString());
+}
+
+function toReadableRounds(value: number | null): string {
+  if (value == null) {
+    return "-";
+  }
+  return String(Math.max(0, Math.floor(value)));
+}
+
+function toPlayedAtDisplay(value: unknown): { text: string; sortValue: number } {
+  const formatDate = (date: Date): string =>
+    date.toLocaleString(undefined, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const milliseconds = value < 10_000_000_000 ? value * 1000 : value;
+    const date = new Date(milliseconds);
+    if (!Number.isNaN(date.getTime())) {
+      return {
+        text: formatDate(date),
+        sortValue: date.getTime(),
+      };
+    }
+  }
+
+  const rawText = String(value ?? "").trim();
+  if (!rawText) {
+    return { text: "-", sortValue: 0 };
+  }
+
+  const numericTimestamp = toFiniteNumber(rawText);
+  if (numericTimestamp != null) {
+    const milliseconds = numericTimestamp < 10_000_000_000 ? numericTimestamp * 1000 : numericTimestamp;
+    const date = new Date(milliseconds);
+    if (!Number.isNaN(date.getTime())) {
+      return {
+        text: formatDate(date),
+        sortValue: date.getTime(),
+      };
+    }
+  }
+
+  const parsedDate = new Date(rawText);
+  if (!Number.isNaN(parsedDate.getTime())) {
+    return {
+      text: formatDate(parsedDate),
+      sortValue: parsedDate.getTime(),
+    };
+  }
+
+  return {
+    text: rawText,
+    sortValue: 0,
+  };
+}
+
+function toProfileResultRows(
+  raw: unknown,
+  viewedUserId: string,
+  loggedInUserId: string,
+  viewedUsername: string,
+): ProfileResultRow[] {
+  const resultItems = extractResultsArray(raw);
+  const rows: ProfileResultRow[] = [];
+
+  resultItems.forEach((entry, index) => {
+    const record = asRecord(entry);
+    if (!record) {
+      return;
+    }
+
+    const sessionRecord = asRecord(record.session);
+    const lobbyRecord = asRecord(record.lobby);
+
+    const lobbyCode = String(
+      record.sessionId ??
+      record.lobbyCode ??
+      record.code ??
+      sessionRecord?.sessionId ??
+      sessionRecord?.code ??
+      lobbyRecord?.sessionId ??
+      lobbyRecord?.code ??
+      record.lobbyId ??
+      "",
+    ).trim() || "-";
+
+    const playedAtRaw =
+      record.playedAt ??
+      record.finishedAt ??
+      record.completedAt ??
+      record.endedAt ??
+      record.createdAt ??
+      record.updatedAt;
+    const playedAt = toPlayedAtDisplay(playedAtRaw);
+
+    const scoreMap =
+      asRecord(record.userScores) ??
+      asRecord(record.scores) ??
+      asRecord(record.playerScores);
+    const mappedScore = scoreMap ? toFiniteNumber(scoreMap[viewedUserId]) : null;
+    const score =
+      mappedScore ??
+      toFiniteNumber(record.userScore) ??
+      toFiniteNumber(record.score) ??
+      toFiniteNumber(record.points) ??
+      toFiniteNumber(record.finalScore);
+    const statsRecord = asRecord(record.stats);
+    const rounds =
+      toFiniteNumber(record.rounds) ??
+      toFiniteNumber(record.totalRounds) ??
+      toFiniteNumber(record.roundCount) ??
+      toFiniteNumber(record.currentRound) ??
+      toFiniteNumber(statsRecord?.rounds) ??
+      toFiniteNumber(statsRecord?.totalRounds);
+
+    const winnerRecord = asRecord(record.winner);
+    const winnerId = String(
+      record.winnerUserId ??
+      record.winnerId ??
+      winnerRecord?.id ??
+      "",
+    ).trim();
+    const winnerName = String(
+      record.winnerUsername ??
+      record.winnerName ??
+      winnerRecord?.username ??
+      winnerRecord?.name ??
+      (winnerId ? `User ${winnerId}` : "-"),
+    ).trim() || "-";
+
+    const winnerById = Boolean(
+      loggedInUserId.length > 0 &&
+      winnerId.length > 0 &&
+      winnerId === loggedInUserId,
+    );
+    const winnerByName = Boolean(
+      winnerId.length === 0 &&
+      loggedInUserId === viewedUserId &&
+      normalizeLower(winnerName) === normalizeLower(viewedUsername),
+    );
+
+    rows.push({
+      key: `${lobbyCode}-${playedAt.sortValue}-${index}`,
+      lobbyCode,
+      playedAtText: playedAt.text,
+      playedAtSort: playedAt.sortValue,
+      roundsText: toReadableRounds(rounds),
+      roundsSort: rounds,
+      scoreText: toReadableScore(score),
+      scoreSort: score,
+      winnerName,
+      isWinnerCurrentUser: winnerById || winnerByName,
+    });
+  });
+
+  return rows.sort((a, b) => {
+    if (a.playedAtSort !== b.playedAtSort) {
+      return b.playedAtSort - a.playedAtSort;
+    }
+    return a.lobbyCode.localeCompare(b.lobbyCode);
+  });
+}
+
+const resultsColumns: TableProps<ProfileResultRow>["columns"] = [
+  {
+    title: "Date Played",
+    dataIndex: "playedAtText",
+    key: "playedAtText",
+    width: 215,
+    sorter: (a, b) => a.playedAtSort - b.playedAtSort,
+    render: (value: string, row) => (row.isEmptyState ? "-" : value),
+  },
+  {
+    title: "Lobby Code",
+    dataIndex: "lobbyCode",
+    key: "lobbyCode",
+    width: 155,
+    render: (value: string, row) => (
+      <span className="users-username-cell" title={row.isEmptyState ? "" : value}>
+        {row.isEmptyState ? "-" : value}
+      </span>
+    ),
+  },
+  {
+    title: "Rounds",
+    dataIndex: "roundsText",
+    key: "roundsText",
+    width: 108,
+    align: "center",
+    sorter: (a, b) => (a.roundsSort ?? -1) - (b.roundsSort ?? -1),
+    render: (value: string, row) => (row.isEmptyState ? "-" : value),
+  },
+  {
+    title: "Score",
+    dataIndex: "scoreText",
+    key: "scoreText",
+    width: 90,
+    align: "center",
+    sorter: (a, b) => (a.scoreSort ?? -1) - (b.scoreSort ?? -1),
+    render: (value: string, row) => (row.isEmptyState ? "-" : value),
+  },
+  {
+    title: "Winner",
+    dataIndex: "winnerName",
+    key: "winnerName",
+    align: "right",
+    render: (value: string, row) => {
+      if (row.isEmptyState) {
+        return <span className="profile-results-empty-text">{NO_RESULTS_TEXT}</span>;
+      }
+
+      return (
+        <span className="profile-results-winner" title={value}>
+          <span className="profile-results-name">{value}</span>
+          {row.isWinnerCurrentUser ? (
+            <span className="profile-results-crown">{WINNER_CROWN}</span>
+          ) : null}
+        </span>
+      );
+    },
+  },
+];
 
 const UserProfilePage: React.FC = () => {
   const router = useRouter();
@@ -16,11 +331,15 @@ const UserProfilePage: React.FC = () => {
   const apiService = useApi();
 
   const { value: storedUserId } = useLocalStorage<string>("userId", "");
+  const { value: token } = useLocalStorage<string>("token", "");
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [editingBio, setEditingBio] = useState(false);
   const [bioDraft, setBioDraft] = useState("");
+  const [resultsRaw, setResultsRaw] = useState<unknown>([]);
+  const [loadingResults, setLoadingResults] = useState(false);
 
   const viewedUserId = String(params?.id ?? "").trim();
   const ownUserId = String(storedUserId ?? "").trim();
@@ -36,6 +355,7 @@ const UserProfilePage: React.FC = () => {
 
     const fetchUser = async () => {
       setLoading(true);
+      setProfileLoadError(null);
       try {
         const fetched = await apiService.get<User>(`/users/${encodeURIComponent(viewedUserId)}`);
         if (!active) {
@@ -45,6 +365,8 @@ const UserProfilePage: React.FC = () => {
         setBioDraft((fetched.bio ?? "").trim() || DEFAULT_BIO);
       } catch (error) {
         if (active && error instanceof Error) {
+          setUser(null);
+          setProfileLoadError(error.message);
           alert(`Could not load profile:\n${error.message}`);
         }
       } finally {
@@ -60,6 +382,75 @@ const UserProfilePage: React.FC = () => {
       active = false;
     };
   }, [apiService, viewedUserId, router]);
+
+  useEffect(() => {
+    if (!viewedUserId) {
+      setResultsRaw([]);
+      setLoadingResults(false);
+      return;
+    }
+
+    let active = true;
+
+    const loadResults = async () => {
+      setLoadingResults(true);
+
+      const authToken = String(token ?? "").trim();
+      const resultEndpoints = [
+        `/users/${encodeURIComponent(viewedUserId)}/results`,
+        `/users/${encodeURIComponent(viewedUserId)}/games`,
+        `/games/users/${encodeURIComponent(viewedUserId)}`,
+      ];
+
+      for (const endpoint of resultEndpoints) {
+        try {
+          const response = authToken
+            ? await apiService.getWithAuth<unknown>(endpoint, authToken)
+            : await apiService.get<unknown>(endpoint);
+
+          if (active) {
+            setResultsRaw(response);
+          }
+          return;
+        } catch (error: unknown) {
+          const status = (error as ApplicationError)?.status;
+          if (status === 404 || status === 405) {
+            continue;
+          }
+
+          console.error("Could not load user game results:", error);
+          if (active) {
+            setResultsRaw([]);
+          }
+          return;
+        }
+      }
+
+      if (active) {
+        setResultsRaw([]);
+      }
+    };
+
+    void loadResults().finally(() => {
+      if (active) {
+        setLoadingResults(false);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [apiService, token, viewedUserId]);
+
+  const resultsRows = useMemo(() => {
+    const rows = toProfileResultRows(
+      resultsRaw,
+      viewedUserId,
+      ownUserId,
+      String(user?.username ?? ""),
+    );
+    return rows.length > 0 ? rows : [EMPTY_RESULTS_ROW];
+  }, [resultsRaw, viewedUserId, ownUserId, user?.username]);
 
   const handleBack = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -86,6 +477,8 @@ const UserProfilePage: React.FC = () => {
   const rank = user?.overallRank ?? "-";
   const shownBio = (user?.bio ?? "").trim() || DEFAULT_BIO;
   const isDefaultBio = shownBio === DEFAULT_BIO;
+  const profilePresenceKey = toPresenceKey(user?.status);
+  const profilePresenceLabel = user ? toPresenceLabel(profilePresenceKey) : "";
 
   return (
     <div className="cabo-background">
@@ -94,7 +487,18 @@ const UserProfilePage: React.FC = () => {
           <Card
             loading={loading}
             className="dashboard-container"
-            title={<div className="dashboard-section-title">User Profile</div>}
+            title={
+              <div className="lobby-section-title-row">
+                <span className="dashboard-section-title">User Profile</span>
+                {!loading && user ? (
+                  <span
+                    className={`users-status-pill users-status-${profilePresenceKey} profile-title-status`}
+                  >
+                    {profilePresenceLabel}
+                  </span>
+                ) : null}
+              </div>
+            }
           >
             {!loading && user ? (
               <div className="profile-grid">
@@ -131,7 +535,7 @@ const UserProfilePage: React.FC = () => {
                           setEditingBio(true);
                         }}
                       >
-                        Edit 
+                        Edit
                       </Button>
                     ) : null}
                   </div>
@@ -172,6 +576,43 @@ const UserProfilePage: React.FC = () => {
                 </div>
               </div>
             ) : null}
+
+            {!loading && !user ? (
+              <p className="profile-results-empty-text">
+                {profileLoadError
+                  ? `Could not load user profile: ${profileLoadError}`
+                  : "Could not load user profile."}
+              </p>
+            ) : null}
+          </Card>
+
+          <Card
+            className="dashboard-container"
+            title={
+              <div className="lobby-section-title-row">
+                <span className="dashboard-section-title">Results</span>
+              </div>
+            }
+          > 
+            <Table<ProfileResultRow>
+              className="users-overview-table profile-results-table"
+              columns={resultsColumns}
+              dataSource={resultsRows}
+              rowKey="key"
+              size="small"
+              tableLayout="fixed"
+              loading={loadingResults}
+              pagination={{
+                pageSize: RESULTS_PAGE_SIZE,
+                showSizeChanger: false,
+                hideOnSinglePage: false,
+                position: ["bottomCenter"],
+              }}
+              rowClassName={() => "profile-results-row"}
+              locale={{
+                emptyText: NO_RESULTS_TEXT,
+              }}
+            />
           </Card>
 
           <Card className="dashboard-container">
