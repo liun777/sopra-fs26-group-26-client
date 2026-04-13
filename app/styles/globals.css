@@ -225,9 +225,18 @@ h1 {
 
 .live-connection-symbol,
 .lobby-connection-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1em;
   font-size: 24px;
   line-height: 1;
   transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.connection-symbol-dot {
+  display: inline-block;
+  line-height: 1;
 }
 
 .live-connection-symbol.connected,
@@ -434,7 +443,6 @@ h1 {
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.25;
-  vertical-align: top;
 }
 
 .users-overview-table .ant-table-container,
@@ -1102,6 +1110,25 @@ h1 {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+/* "Memorize your cards!" during peek phase */
+.peek-phase-indicator {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999;
+  pointer-events: none;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.62);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(2px);
 }
 
 /* Generic card styles */

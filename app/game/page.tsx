@@ -6,6 +6,7 @@ import { Button } from "antd";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import CardComponent from "./components/CardComponent";
 import PeekTimer from "./components/PeekTimer";
+import type { ApplicationError } from "@/types/error";
 
 interface Card {
     value: number;
@@ -19,6 +20,8 @@ const Game = () => {
   const { value: activeSessionId } = useLocalStorage<string>("activeSessionId", "");
   const isSpectator = false;
   const gameId = activeSessionId.trim();
+  const HAND_SIZE = 4; // referencing here, keeps it consistent and less prone to errors
+  const createHiddenPeekCards = () => Array(HAND_SIZE).fill(false); // hide card by default
 
 
 
@@ -53,12 +56,90 @@ const Game = () => {
       // #8 isMyTurn State
       const [isMyTurn, setIsMyTurn] = useState<boolean>(false);
       // #15: track wich bottom cards are faced up during the peekphase
-      const [peekVisibleCards, setPeekVisibleCards] = useState<boolean[]>([false, false, false, false]);
+      const [peekVisibleCards, setPeekVisibleCards] = useState<boolean[]>(createHiddenPeekCards); // TEMP!!! Start initial peek until backend implements game state over WebSocket
       // #17: Peek Phase Timer
       const [isPeekPhase, setIsPeekPhase] = useState<boolean>(false);
       // #15: player's own hand
       const { value: token } = useLocalStorage<string>("token", "");
+      const { value: pendingInitialPeekGameId, clear: clearPendingInitialPeekGameId } =
+          useLocalStorage<string>("pendingInitialPeekGameId", "");
       const [myHand, setMyHand] = useState<Card[]>([]);
+      const [selectedPeekIndices, setSelectedPeekIndices] = useState<number[]>([]);
+      const [isSubmittingInitialPeek, setIsSubmittingInitialPeek] = useState<boolean>(false);
+      const revealedPeekCount = peekVisibleCards.filter(Boolean).length;
+
+      const resetPeekSelection = () => {
+          setPeekVisibleCards(createHiddenPeekCards());
+          setSelectedPeekIndices([]);
+      };
+
+      const startPeekPhase = () => {
+          resetPeekSelection();
+          setIsPeekPhase(true);
+      };
+
+      const submitInitialPeekSelection = async (indices: number[]) => {
+          if (!gameId || !token || !userId) {
+              return;
+          }
+
+          setIsSubmittingInitialPeek(true);
+          try {
+              await apiService.postWithAuth(
+                  `/games/${gameId}/peek`,
+                  {
+                      peekType: "initial",
+                      handUserId: Number(userId),
+                      indices,
+                  },
+                  token
+              );
+          } catch (error) {
+              const appError = error as ApplicationError;
+              // round is already active or initial peek was already consumed
+              if (appError.status === 403 || appError.status === 409) {
+                  setIsPeekPhase(false);
+                  resetPeekSelection();
+              }
+              console.error("Failed to apply initial peek selection:", error);
+          } finally {
+              setIsSubmittingInitialPeek(false);
+          }
+      };
+
+      const handlePeekCardClick = (cardIndex: number) => {
+          if (!isPeekPhase || isSubmittingInitialPeek) {
+              return;
+          }
+
+          if (peekVisibleCards[cardIndex]) {
+              return;
+          }
+
+          if (selectedPeekIndices.length >= 2) {
+              return;
+          }
+
+          const nextVisibleCards = [...peekVisibleCards];
+          nextVisibleCards[cardIndex] = true;
+          setPeekVisibleCards(nextVisibleCards);
+
+          const nextSelectedIndices = [...selectedPeekIndices, cardIndex];
+          setSelectedPeekIndices(nextSelectedIndices);
+
+          if (nextSelectedIndices.length === 2) {
+              void submitInitialPeekSelection(nextSelectedIndices);
+          }
+      };
+
+      useEffect(() => {
+          if (!gameId || pendingInitialPeekGameId !== gameId) {
+              return;
+          }
+
+          startPeekPhase();
+          clearPendingInitialPeekGameId();
+      }, [gameId, pendingInitialPeekGameId, clearPendingInitialPeekGameId]);
 
       // then we see if it is useres turn
       useEffect(() => {
@@ -98,14 +179,20 @@ const Game = () => {
       return (
           <div className="cabo-background">
               <div className="game-overlay">
+                  {isPeekPhase && (
+                      <div className="peek-phase-indicator">
+                          Memorize your cards!
+                      </div>
+                  )}
+
                   {/* #17: PeekTimer overlay */}
                   {isPeekPhase && (
                       <PeekTimer
                         duration={5}
                         onComplete={() => {
                             setIsPeekPhase(false);
-                            {/* #15: all cards shown goback to face-down when timer goes to 0*/}
-                            setPeekVisibleCards([false, false, false, false]);
+                            // #15: all cards shown go back to face-down when timer goes to 0
+                            resetPeekSelection();
                             // refresh hand - all cards should be face-down again
                                 if (gameId && token) {
                                     void apiService.getWithAuth<Card[]>(
@@ -124,21 +211,21 @@ const Game = () => {
 
                   {/* TOP CENTER */}
                   <div className="top-cards">
-                      {[...Array(4)].map((_, i) => (
+                      {[...Array(HAND_SIZE)].map((_, i) => (
                          <CardComponent key={i} hidden={true} size="small" />
                       ))}
                   </div>
 
                   {/* LEFT SIDE */}
                   <div className="left-cards">
-                      {[...Array(4)].map((_, i) => (
+                      {[...Array(HAND_SIZE)].map((_, i) => (
                           <CardComponent key={i} hidden={true} size="small" />
                       ))}
                   </div>
 
                   {/* RIGHT SIDE */}
                   <div className="right-cards">
-                      {[...Array(4)].map((_, i) => (
+                      {[...Array(HAND_SIZE)].map((_, i) => (
                           <CardComponent key={i} hidden={true} size="small" />
                       ))}
                   </div>
@@ -184,43 +271,22 @@ const Game = () => {
                   <div className="top-right-buttons">
                       <Button disabled={!isMyTurn}>Scores</Button>
                       <Button type="primary" disabled={!isMyTurn}>Call Cabo</Button>
-                        {/* temporary this is juzst a test remove later*/}
-                      <Button onClick={() => setIsPeekPhase(true)}>Test Peek</Button>
-
                   </div>
 
                   {/* Bottom cards are only clickable when its users turn*/}
                   <div className={`bottom-cards${isMyTurn ? " game-current-player-highlight" : ""}`}>
-                      {[...Array(4)].map((_, i) => {
+                      {[...Array(HAND_SIZE)].map((_, i) => {
                           const card = myHand[i];
-                          // during peek phase show card if visibility=true
-                          const showFront = isPeekPhase && card?.visibility === true;
                           return (
                               <CardComponent
                                 key={i}
-                                hidden={!peekVisibleCards[i]}  // #15 faceup values during the peakpahse
-                                value={0}                       // TODO: implement witht he real card in the backend
+                                hidden={!peekVisibleCards[i]}  // #16 selected cards are face-up locally
+                                value={card?.value}
                                 size="large"
-                                 onClick={() => {
-                                    if (isPeekPhase) { // POST to backend to select this card for peek
-                                        void apiService.postWithAuth(
-                                            `/games/${gameId}/peek`,
-                                            {
-                                                peekType: "initial",
-                                                handUserId: Number(userId),
-                                                indices: [i]
-                                            },
-                                            token
-                                        ).then(() => {
-                                        // refresh hand after peek selection
-                                            void apiService.getWithAuth<Card[]>(
-                                                `/games/${gameId}/my-hand`,
-                                                token
-                                            ).then(hand => setMyHand(hand));
-                                        }).catch(console.error);
-                                    }
-                                }}
-                                disabled={!isMyTurn}
+                                onClick={() => handlePeekCardClick(i)}
+                                disabled={isPeekPhase
+                                    ? (isSubmittingInitialPeek || (!peekVisibleCards[i] && revealedPeekCount >= 2))
+                                    : !isMyTurn}
                               />
                           );
                       })}

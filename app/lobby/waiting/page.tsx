@@ -256,7 +256,7 @@ function WaitingLobbyContent() {
   const { value: token } = useLocalStorage<string>("token", "");
   const { value: userId } = useLocalStorage<string>("userId", "");
   const { set: setActiveSessionId } = useLocalStorage<string>("activeSessionId", "");
-
+  const { set: setPendingInitialPeekGameId } = useLocalStorage<string>("pendingInitialPeekGameId", ""); // TEMP!!! Start initial peek until backend implements game state over WebSocket
   const onlineUsers = useOnlineUsersTopic();
   const { sentEntries, loadSent, markPending } = useOutgoingInviteStatuses(
     userId,
@@ -287,10 +287,11 @@ function WaitingLobbyContent() {
         return isAlreadyLaunching;
       }
       setActiveSessionId(gameId);
+      setPendingInitialPeekGameId(gameId); // TEMP!!! Start initial peek until backend implements game state over WebSocket
       router.push("/game");
       return true;
     });
-  }, [router, setActiveSessionId]);
+  }, [router, setActiveSessionId, setPendingInitialPeekGameId]); // TEMP!!! Start initial peek until backend implements game state over WebSocket
 
   useEffect(() => {
     const sessionId = sessionIdParam.trim();
@@ -811,7 +812,7 @@ function WaitingLobbyContent() {
                   className={`lobby-connection-symbol ${lobbyConnectionIsGreen ? "connected" : "disconnected"}`}
                   title={lobbyConnectionIsGreen ? "Connected" : "Disconnected"}
                 >
-                  {"\u1BE4"}
+                  <span className="connection-symbol-dot" aria-hidden="true">{"\u25CF"}</span>
                 </span>
               </div>
             }

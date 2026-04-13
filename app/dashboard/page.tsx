@@ -180,7 +180,7 @@ const Dashboard = () => {
                   className={`live-connection-symbol ${liveConnected ? "connected" : "disconnected"}`}
                   title={liveConnected ? "Connected" : "Disconnected"}
                 >
-                  {"\u1BE4"}
+                  <span className="connection-symbol-dot" aria-hidden="true">{"\u25CF"}</span>
                 </span>
               </div>
             }
