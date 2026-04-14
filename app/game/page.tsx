@@ -7,6 +7,7 @@ import useLocalStorage from "@/hooks/useLocalStorage";
 import CardComponent from "./components/CardComponent";
 import PeekTimer from "./components/PeekTimer";
 import type { ApplicationError } from "@/types/error";
+import TurnTimer from "./components/TurnTimer";
 
 interface Card {
     value: number;
@@ -67,6 +68,9 @@ const Game = () => {
       const [selectedPeekIndices, setSelectedPeekIndices] = useState<number[]>([]);
       const [isSubmittingInitialPeek, setIsSubmittingInitialPeek] = useState<boolean>(false);
       const revealedPeekCount = peekVisibleCards.filter(Boolean).length;
+      //#19 Add a visual timer/progress bar that syncs with the backend to warn the player of expiring time
+      const TURN_DURATION = 30;
+
 
       const resetPeekSelection = () => {
           setPeekVisibleCards(createHiddenPeekCards());
@@ -179,6 +183,9 @@ const Game = () => {
       return (
           <div className="cabo-background">
               <div className="game-overlay">
+                  {isMyTurn && (
+                      <TurnTimer duration={TURN_DURATION} isActive={isMyTurn} />
+                  )}
                   {isPeekPhase && (
                       <div className="peek-phase-indicator">
                           Memorize your cards!
@@ -237,35 +244,66 @@ const Game = () => {
                               <CardComponent
                                     hidden={true}
                                     size="medium"
-                                    onClick={() => undefined}
+                                    onClick={() => {
+                                        if (isMyTurn && gameId && token) {
+                                            void apiService.postWithAuth(
+                                                `/games/${gameId}/moves/draw`,
+                                                {},
+                                                token
+                                            ).then(() => {
+                                            // refresh drawn card after drawing
+                                                return apiService.getWithAuth<Card>(
+                                                    `/games/${gameId}/drawn-card`,
+                                                    token
+                                                );
+                                            }).then(card => setDrawnCard(card))
+                                            .catch(console.error);
+                                        }
+                                    }}
                                     disabled={!isMyTurn}
-                                />
-                              <p>Draw Pile</p>
+                              />
+                          <p>Draw Pile</p>
                           </div>
+
+                          {/* #20: Drawn Card Slot */}
+                              {isMyTurn && (
+                                  <div className="pile">
+                                      {drawnCard ? (
+                                          <CardComponent
+                                              hidden={false}
+                                              value={drawnCard.value}
+                                              size="medium"
+                                          />
+                                      ) : (
+                                          <div style={{
+                                              backgroundColor: "rgba(255,255,255,0.1)",
+                                              border: "2px dashed #999",
+                                              borderRadius: "8px",
+                                              width: "80px",
+                                              height: "120px",
+                                              display: "flex",
+                                              alignItems: "center",
+                                              justifyContent: "center",
+                                              color: "#999",
+                                              fontSize: "12px",
+                                          }}>
+                                              Draw a card
+                                          </div>
+                                      )}
+                                      <p>Drawn Card</p>
+                                  </div>
+                              )}
 
                       {/* Discard Pile the top card is always faceup */}
                       <div className="pile">
-                          <div className="card medium" style={{
-                              backgroundColor: discardTopCard ? "#fff" : "#ccc",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: "24px",
-                              fontWeight: "bold",
-                              color: "#333",
-                              border: "2px solid #999",
-                              borderRadius: "8px",
-                              width: "80px",
-                              height: "120px",
-                              cursor: isMyTurn ? "pointer" : "not-allowed",
-                              opacity: isMyTurn ? 1 : 0.6,
-                          }}>
-                              {/* shows value if there is a card available */}
-                              {discardTopCard ? discardTopCard.value : "?"}
+                          <CardComponent
+                                  hidden={false}
+                                  value={discardTopCard?.value}
+                                  size="medium"
+                              />
+                              <p>Discard Pile</p>
                           </div>
-                          <p>Discard Pile</p>
                       </div>
-                  </div>
 
                   {/* Buttons are only active if it is users turn */}
                   <div className="top-right-buttons">
