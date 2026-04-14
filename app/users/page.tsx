@@ -259,7 +259,7 @@ const UsersPage: React.FC = () => {
                   size="small"
                   pagination={false}
                   rowClassName={() => "users-overview-row"}
-                  onRow={(row) => ({
+                  onRow={(row: UserRow) => ({
                     onClick: () => router.push(`/users/${row.id}`),
                   })}
                 />
