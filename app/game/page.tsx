@@ -70,6 +70,8 @@ const Game = () => {
       const revealedPeekCount = peekVisibleCards.filter(Boolean).length;
       //#19 Add a visual timer/progress bar that syncs with the backend to warn the player of expiring time
       const TURN_DURATION = 30;
+      // #20
+      const [drawnCard, setDrawnCard] = useState<Card | null>(null);
 
 
       const resetPeekSelection = () => {
