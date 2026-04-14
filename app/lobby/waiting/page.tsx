@@ -36,6 +36,9 @@ type LobbySession = {
 type GameStateSignal = {
   gameId?: string | null;
   id?: string | null;
+  status?: string | null;
+  gameStatus?: string | null;
+  phase?: string | null;
 };
 
 type Player = {
@@ -88,6 +91,26 @@ function extractGameId(value: unknown): string {
 
   const nestedRecord = nestedGame as Record<string, unknown>;
   return String(nestedRecord.gameId ?? nestedRecord.id ?? "").trim();
+}
+
+function extractGameStatus(value: unknown): string {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const record = value as Record<string, unknown>;
+  const directStatus = normalizeValue(record.status ?? record.gameStatus ?? record.phase);
+  if (directStatus) {
+    return directStatus;
+  }
+
+  const nestedGame = record.game;
+  if (!nestedGame || typeof nestedGame !== "object") {
+    return "";
+  }
+
+  const nestedRecord = nestedGame as Record<string, unknown>;
+  return normalizeValue(nestedRecord.status ?? nestedRecord.gameStatus ?? nestedRecord.phase);
 }
 
 function canInvitePresence(presence: PresenceKey): boolean {
@@ -256,7 +279,7 @@ function WaitingLobbyContent() {
   const { value: token } = useLocalStorage<string>("token", "");
   const { value: userId } = useLocalStorage<string>("userId", "");
   const { set: setActiveSessionId } = useLocalStorage<string>("activeSessionId", "");
-  const { set: setPendingInitialPeekGameId } = useLocalStorage<string>("pendingInitialPeekGameId", ""); // TEMP!!! Start initial peek until backend implements game state over WebSocket
+  const { set: setPendingInitialPeekGameId } = useLocalStorage<string>("pendingInitialPeekGameId", "");
   const onlineUsers = useOnlineUsersTopic();
   const { sentEntries, loadSent, markPending } = useOutgoingInviteStatuses(
     userId,
@@ -277,21 +300,24 @@ function WaitingLobbyContent() {
   const [startingGame, setStartingGame] = useState(false);
   const [launchingGame, setLaunchingGame] = useState(false);
 
-  const launchToGame = useCallback((rawGameId: unknown) => {
+  const launchToGame = useCallback((rawGameId: unknown, rawStatus?: string, forceInitialPeekBootstrap = false) => {
     const gameId = String(rawGameId ?? "").trim();
     if (!gameId) {
       return;
     }
+    const status = normalizeValue(rawStatus ?? "");
     setLaunchingGame((isAlreadyLaunching) => {
       if (isAlreadyLaunching) {
         return isAlreadyLaunching;
       }
       setActiveSessionId(gameId);
-      setPendingInitialPeekGameId(gameId); // TEMP!!! Start initial peek until backend implements game state over WebSocket
+      if (!status || status === "initial_peek" || forceInitialPeekBootstrap) {
+        setPendingInitialPeekGameId(gameId);
+      }
       router.push("/game");
       return true;
     });
-  }, [router, setActiveSessionId, setPendingInitialPeekGameId]); // TEMP!!! Start initial peek until backend implements game state over WebSocket
+  }, [router, setActiveSessionId, setPendingInitialPeekGameId]);
 
   useEffect(() => {
     const sessionId = sessionIdParam.trim();
@@ -450,7 +476,7 @@ function WaitingLobbyContent() {
         client.subscribe("/user/queue/game-state", (message) => {
           try {
             const payload = JSON.parse(String(message.body ?? "{}")) as GameStateSignal;
-            launchToGame(extractGameId(payload));
+            launchToGame(extractGameId(payload), extractGameStatus(payload));
           } catch {
             /* ignore malformed payload */
           }
@@ -751,7 +777,7 @@ function WaitingLobbyContent() {
       );
       const startedGameId = extractGameId(started);
       if (startedGameId) {
-        launchToGame(startedGameId);
+        launchToGame(startedGameId, extractGameStatus(started), true);
       }
     } catch (error: unknown) {
       const status = (error as ApplicationError)?.status;

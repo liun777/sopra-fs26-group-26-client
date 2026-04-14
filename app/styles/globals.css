@@ -1105,21 +1105,32 @@ h1 {
 .game-overlay {
   position: relative;
   width: 100%;
-  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
   background: rgba(50, 50, 50, 0.8);
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: 18px;
+  overflow: hidden;
 }
 
 /* "Memorize your cards!" during peek phase */
-.peek-phase-indicator {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 999;
+.peek-phase-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 900;
   pointer-events: none;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 20px;
+}
+
+.peek-phase-indicator {
+  position: relative;
   padding: 10px 16px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -1129,6 +1140,53 @@ h1 {
   font-weight: 700;
   letter-spacing: 0.02em;
   backdrop-filter: blur(2px);
+}
+
+/* more a placeholder for game clarification - is necessary, but needs propar implmentation */
+.game-player-list {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.game-player-list-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: min(48vw, 340px);
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #f0f0f0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.game-player-list-item.active {
+  color: #34e27a;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(52, 226, 122, 0.45);
+}
+
+.game-player-list-timer {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(52, 226, 122, 0.2);
+  color: #c8ffd9;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 34px;
+  text-align: center;
 }
 
 /* Generic card styles */
@@ -1168,6 +1226,10 @@ h1 {
   top: 40px;
   display: flex;
   gap: 10px;
+}
+
+.top-cards.opponent-seat-top .card {
+  transform: rotate(180deg);
 }
 
 /* Bottom cards */
@@ -1220,6 +1282,10 @@ h1 {
 
 }
 
+.left-cards.opponent-seat-left .card {
+  transform: rotate(-90deg);
+}
+
 /* Right side */
 .right-cards {
   position: absolute;
@@ -1231,11 +1297,17 @@ h1 {
   gap: 10px;
 }
 
+.right-cards.opponent-seat-right .card {
+  transform: rotate(90deg);
+}
+
 /* Center piles */
 .center-area {
   display: flex;
   gap: 80px;
   align-items: center;
+  justify-content: center;
+  max-width: 100%;
 }
 
 .pile {
@@ -1246,6 +1318,42 @@ h1 {
   color: white;
 }
 
+.pile p {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.game-center-turn-timer {
+  margin-top: 4px;
+  z-index: 15;
+  width: min(240px, 70vw);
+  text-align: center;
+}
+
+.game-turn-progress-track {
+  width: 100%;
+  height: 10px;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+  overflow: hidden;
+}
+
+.game-turn-progress-fill {
+  height: 100%;
+  background: #34e27a;
+  border-radius: 999px;
+  transition: width 1s linear;
+}
+
+.game-turn-progress-label {
+  margin: 4px 0 0;
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+}
+
 /* Top right buttons */
 .top-right-buttons {
   position: absolute;
@@ -1254,4 +1362,79 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+@media (max-width: 900px), (max-aspect-ratio: 10/16) {
+  .card.small {
+    width: 48px;
+    height: 72px;
+  }
+
+  .card.medium {
+    width: 68px;
+    height: 96px;
+  }
+
+  .card.large {
+    width: 76px;
+    height: 112px;
+  }
+
+  .top-cards {
+    top: 20px;
+    gap: 6px;
+  }
+
+  .game-player-list {
+    top: 8px;
+    left: 8px;
+    gap: 4px;
+  }
+
+  .game-player-list-item {
+    max-width: 48vw;
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+
+  .game-player-list-timer {
+    font-size: 11px;
+    min-width: 30px;
+  }
+
+  .left-cards,
+  .right-cards {
+    top: 34%;
+    gap: 6px;
+  }
+
+  .left-cards {
+    left: 8px;
+  }
+
+  .right-cards {
+    right: 8px;
+  }
+
+  .center-area {
+    width: min(94vw, 360px);
+    gap: 12px;
+    justify-content: space-between;
+    transform: translateY(12px);
+  }
+
+  .bottom-cards {
+    bottom: 12px;
+    gap: 8px;
+  }
+
+  .top-right-buttons {
+    top: 10px;
+    right: 8px;
+    gap: 6px;
+  }
+
+  .game-center-turn-timer {
+    width: min(180px, 64vw);
+  }
 }
