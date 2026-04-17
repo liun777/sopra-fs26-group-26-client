@@ -97,15 +97,12 @@ reason).
 | **@aleexgort** | 14.04.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/3e5118f4b18e1a8e8f60ffe5d7730e7ca2f6f920 | Implemented the UI for the currently drawn card as well as a visualization for the TurnTimer that make the current status visible for a player. | -improves player feedback during turn, -makes drawn card immediately visible in UI, -visualizes the remaining turntime, -prevents hidden things form users who are not supposed to see them|
 | **@aleexgort** | 14.04.2026| https://github.com/liun777/sopra-fs26-group-26-server/commit/f22587e48799e7486954cef267141c3b6cc98b6b | Implementation of swap ability logic between players and extension ofgame service and gmae controller controller for new move types that support additional game state transitions | -improves player feedback during turn, -makes drawn card immediately visible in UI, -syncs turn time visualization with the forntend, prevents hidden game state for users who are not supposed to see them. |
 
-
-
 ---
 
-## Contributions Week 4 - [Begin Date] to [End Date]
-
-| **@aleexgort** | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
-| **@aleexgort** | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
-| **@aleexgort** | [date]   | [Link to Commit 2] | [Brief description of the task] | [Why this contribution is relevant] |
+## Contributions Week 4 - [15.04.2026] to [21.04.2026]
+| **Student**        | **Date** | **Link to Commit** | **Description**                 | **Relevance**                       |
+| ------------------ | -------- | ------------------ | ------------------------------- | ----------------------------------- |
+| **@uIiana** | 17.04.2026   | https://github.com/liun777/sopra-fs26-group-26-server/commit/caff64f88022d71b924dad591756025ba0aafb29 | Implemented the following components for the 7/8 (own card) and 9/10 (opponent card) special ability peeks: <br> - DTOs for server - client communication (AbilityPeekRequestDTO, AbilitySpyRequestDTO and PeekResultDTO) <br> - implements the 2 controller endpoints (@PostMapping("/games/{gameId}/abilities/peek") and @PostMapping("/games/{gameId}/abilities/spy")) <br> - implements the logic in 2 GameService methods (useAbilityPeekSelf(), useAbilitySpyOpponent()) <br> - 3 tests for the new functionality of GameService <br> Closes [#73](https://github.com/liun777/sopra-fs26-group-26-server/issues/73) <br><br> Additionally fixed an older bug in initial peek privacy during game state broadcast. | Implements the REST endpoints, DTOs and service methods for special ability peeks (own and opponent cards). Tests the implementation. Fixes an older bug. |
 
 
 ---
