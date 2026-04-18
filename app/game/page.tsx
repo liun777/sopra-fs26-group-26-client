@@ -712,6 +712,107 @@ const canDrawFromPile = isMyTurn && !isPeekPhase && !drawnCard && !isDrawingFrom
 const canSwapDrawnCardWithHand = isMyTurn && !isPeekPhase && !!drawnCard && !isSwappingDrawnCard && !isAbilityPending;
 const hideOpponentCardsInitialPeek = gameStatus === "initial_peek" || isPeekPhase;
 
+// Implement logic to highlight valid cards (own cards for 7-8, opponent cards for 9-12) and capture the user's click.
+//  #28
+const [abilitySelectedOwnCardIndex, setAbilitySelectedOwnCardIndex] = useState<number | null>(null);
+const [abilitySelectedOpponentId, setAbilitySelectedOpponentId] = useState<number | null>(null);
+const [abilitySelectedOpponentCardIndex, setAbilitySelectedOpponentCardIndex] = useState<number | null>(null);
+const [isSubmittingAbility, setIsSubmittingAbility] = useState<boolean>(false);
+
+// reset the ability selection when the phase ends
+const resetAbilitySelection = () => {
+    setAbilitySelectedOwnCardIndex(null);
+    setAbilitySelectedOpponentId(null);
+    setAbilitySelectedOpponentCardIndex(null);
+    setIsSubmittingAbility(false);
+};
+
+// #28: reset the ability selection when the game status changed
+useEffect(() => {
+    if (!isAbilityPending) {
+        resetAbilitySelection();
+    }
+}, [isAbilityPending]);
+
+// #28: handle own card click during ability phase
+const handleAbilityOwnCardClick = (cardIndex: number) => {
+    if (!isMyTurn || !gameId || !token || isSubmittingAbility) return;
+
+    if (gameStatus === "ability_peek_self") {
+        // 7/8: peek own card → POST immediately
+        setIsSubmittingAbility(true);
+        void apiService.postWithAuth(
+            `/games/${gameId}/peek`,
+            {
+                peekType: "special",
+                handUserId: selfUserId,
+                indices: [cardIndex],
+            },
+            token
+        ).then(() => {
+            // reveal card locally for a moment
+            const next = [...peekVisibleCards];
+            next[cardIndex] = true;
+            setPeekVisibleCards(next);
+            // hide again after 3 seconds
+            setTimeout(() => {
+                const reset = [...peekVisibleCards];
+                reset[cardIndex] = false;
+                setPeekVisibleCards(reset);
+            }, 3000);
+        }).catch(console.error)
+        .finally(() => setIsSubmittingAbility(false));
+
+    } else if (gameStatus === "ability_swap") {
+        // 11/12: first select own card
+        setAbilitySelectedOwnCardIndex(cardIndex);
+    }
+};
+
+
+// #28: handle opponent card click during ability phase
+const handleAbilityOpponentCardClick = (opponentId: number, cardIndex: number) => {
+    if (!isMyTurn || !gameId || !token || isSubmittingAbility) return;
+
+    if (gameStatus === "ability_peek_opponent") {
+        // 9/10: peek opponent card, POST immediately
+        setIsSubmittingAbility(true);
+        void apiService.postWithAuth(
+            `/games/${gameId}/peek`,
+            {
+                peekType: "special",
+                handUserId: opponentId,
+                indices: [cardIndex],
+            },
+            token
+        ).then(() => {
+            resetAbilitySelection();
+        }).catch(console.error)
+        .finally(() => setIsSubmittingAbility(false));
+
+    } else if (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null) {
+        // 11/12: own card already selected, now swap
+        setIsSubmittingAbility(true);
+        void apiService.postWithAuth(
+            `/games/${gameId}/abilities/swap`,
+            {
+                ownCardIndex: abilitySelectedOwnCardIndex,
+                targetUserId: opponentId,
+                targetCardIndex: cardIndex,
+            },
+            token
+        ).then(() => {
+            resetAbilitySelection();
+            return apiService.getWithAuth<Card[]>(
+                `/games/${gameId}/my-hand`,
+                token
+            );
+        }).then(hand => setMyHand(hand))
+        .catch(console.error)
+        .finally(() => setIsSubmittingAbility(false));
+    }
+};
+
 const playerListRows = tablePlayerIds.map((id) => {
           const fallbackLabel = selfUserId != null && id === selfUserId ? "You" : `Player ${id}`;
           const label = playerNamesById[id] ?? fallbackLabel;
@@ -781,6 +882,27 @@ const playerListRows = tablePlayerIds.map((id) => {
                                  hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
                                  value={card.value}
                                  size="small"
+                                 // #28: highlight opponent cards during ability phase
+                                 onClick={() => {
+                                     if (isAbilityPending && isMyTurn && seatAssignments.topOpponentId != null) {
+                                         handleAbilityOpponentCardClick(seatAssignments.topOpponentId, index);
+                                     }
+                                 }}
+                                 disabled={
+                                     !(isAbilityPending && isMyTurn && (
+                                         gameStatus === "ability_peek_opponent" ||
+                                         (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                     )) || isSubmittingAbility
+                                 }
+                                 style={
+                                     isMyTurn && isAbilityPending && (
+                                         gameStatus === "ability_peek_opponent" ||
+                                         (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                     ) ? {
+                                         outline: "3px solid #c4827a",
+                                         outlineOffset: "2px",
+                                     } : undefined
+                                 }
                              />
                           ))}
                       </div>
@@ -795,6 +917,27 @@ const playerListRows = tablePlayerIds.map((id) => {
                                   hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
                                   value={card.value}
                                   size="small"
+                                  // #28: highlight opponent cards during ability phase
+                                  onClick={() => {
+                                      if (isAbilityPending && isMyTurn && seatAssignments.leftOpponentId != null) {
+                                          handleAbilityOpponentCardClick(seatAssignments.leftOpponentId, index);
+                                      }
+                                  }}
+                                  disabled={
+                                      !(isAbilityPending && isMyTurn && (
+                                          gameStatus === "ability_peek_opponent" ||
+                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                      )) || isSubmittingAbility
+                                  }
+                                  style={
+                                      isMyTurn && isAbilityPending && (
+                                          gameStatus === "ability_peek_opponent" ||
+                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                      ) ? {
+                                          outline: "3px solid #c4827a",
+                                          outlineOffset: "2px",
+                                      } : undefined
+                                  }
                               />
                           ))}
                       </div>
@@ -809,6 +952,27 @@ const playerListRows = tablePlayerIds.map((id) => {
                                   hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
                                   value={card.value}
                                   size="small"
+                                  // #28: highlight opponent cards during ability phase
+                                  onClick={() => {
+                                      if (isAbilityPending && isMyTurn && seatAssignments.rightOpponentId != null) {
+                                          handleAbilityOpponentCardClick(seatAssignments.rightOpponentId, index);
+                                      }
+                                  }}
+                                  disabled={
+                                      !(isAbilityPending && isMyTurn && (
+                                          gameStatus === "ability_peek_opponent" ||
+                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                      )) || isSubmittingAbility
+                                  }
+                                  style={
+                                      isMyTurn && isAbilityPending && (
+                                          gameStatus === "ability_peek_opponent" ||
+                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                      ) ? {
+                                          outline: "3px solid #c4827a",
+                                          outlineOffset: "2px",
+                                      } : undefined
+                                  }
                               />
                           ))}
                       </div>
@@ -940,6 +1104,14 @@ const playerListRows = tablePlayerIds.map((id) => {
                   <div className={`bottom-cards${isMyTurn ? " game-current-player-highlight" : ""}`}>
                       {[...Array(HAND_SIZE)].map((_, i) => {
                           const card = myHand[i];
+                          // #28: highlight own cards during ability phase
+                          const isHighlightedForAbility =
+                            isMyTurn && (
+                                gameStatus === "ability_peek_self" ||
+                                gameStatus === "ability_swap"
+                            );
+                          const isSelectedForSwap = abilitySelectedOwnCardIndex === i;
+
                           return (
                               <CardComponent
                                 key={i}
@@ -978,6 +1150,13 @@ const playerListRows = tablePlayerIds.map((id) => {
                                 disabled={isPeekPhase
                                     ? (isSubmittingInitialPeek || (!peekVisibleCards[i] && revealedPeekCount >= 2))
                                     : !canSwapDrawnCardWithHand}
+                                // #28: visual highlight
+                                style={isHighlightedForAbility ? {
+                                    outline: isSelectedForSwap
+                                        ? "3px solid #e8a87c"   // orange = selected for swap
+                                        : "3px solid #a8b87a",  // green = clickable
+                                    outlineOffset: "2px",
+                                } : undefined}
                               />
                           );
                       })}

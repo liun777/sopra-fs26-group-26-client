@@ -6,6 +6,7 @@ interface CardProps {
   size?: "small" | "medium" | "large";
   onClick?: () => void;
   disabled?: boolean;
+  style?: React.CSSProperties;
 }
 
 // Card abilities
@@ -17,7 +18,7 @@ const getAbility = (value: number): string => {
 };
 // get the correct oath of the png's
 const getCardImagePath = (value: number): string => {
-  return `/card${value}.png`; // ← einfach so, kein * mehr!
+  return `/card${value}.png`;
 };
 
 const CardComponent: React.FC<CardProps> = ({
@@ -26,6 +27,7 @@ const CardComponent: React.FC<CardProps> = ({
   size = "medium",
   onClick,
   disabled = false,
+  style,
 }) => {
   const handleClick = () => {
     if (!disabled && onClick) {
@@ -45,8 +47,9 @@ const CardComponent: React.FC<CardProps> = ({
         className={`card ${size}`}
         onClick={handleClick}
         style={{
-          cursor: disabled ? "not-allowed" : onClick ? "pointer" : "default",
-          opacity: disabled ? 0.6 : 1,
+          cursor: cursorStyle,
+          opacity: opacityStyle,
+          ...style,
         }}
       />
     );
@@ -72,6 +75,7 @@ const CardComponent: React.FC<CardProps> = ({
             justifyContent: "center",
             border: "2px solid #999",
             position: "relative",
+            ...style,
           }}
         >
           {/* if no picture yet show value with white backgorund */}
