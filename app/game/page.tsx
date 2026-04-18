@@ -701,11 +701,18 @@ const Game = () => {
       }, [apiService, gameId, token]);
 
 
+// Disable regular "Draw/Discard" buttons while an ability choice is pending.
+// #26
+const isAbilityPending =
+    gameStatus === "ability_peek_self" ||
+    gameStatus === "ability_peek_opponent" ||
+    gameStatus === "ability_swap";
 
-      const canDrawFromPile = isMyTurn && !isPeekPhase && !drawnCard && !isDrawingFromPile && !isSwappingDrawnCard;
-      const canSwapDrawnCardWithHand = isMyTurn && !isPeekPhase && !!drawnCard && !isSwappingDrawnCard;
-      const hideOpponentCardsInitialPeek = gameStatus === "initial_peek" || isPeekPhase;
-      const playerListRows = tablePlayerIds.map((id) => {
+const canDrawFromPile = isMyTurn && !isPeekPhase && !drawnCard && !isDrawingFromPile && !isSwappingDrawnCard && !isAbilityPending;
+const canSwapDrawnCardWithHand = isMyTurn && !isPeekPhase && !!drawnCard && !isSwappingDrawnCard && !isAbilityPending;
+const hideOpponentCardsInitialPeek = gameStatus === "initial_peek" || isPeekPhase;
+
+const playerListRows = tablePlayerIds.map((id) => {
           const fallbackLabel = selfUserId != null && id === selfUserId ? "You" : `Player ${id}`;
           const label = playerNamesById[id] ?? fallbackLabel;
           const isActive = currentTurnUserId != null && currentTurnUserId === id;
@@ -880,6 +887,31 @@ const Game = () => {
                                   hidden={false}
                                   value={discardTopCard?.value}
                                   size="medium"
+                                  onClick={() =>{
+                                      // #25: only clickable if its my turn, no drawn card yet, and discard pile not empty
+                                       if (!isMyTurn || !gameId || !token || drawnCard || !discardTopCard) {
+                                           return;
+                                       }
+                                       void apiService.postWithAuth(
+                                           `/games/${gameId}/discard-pile/draw`,
+                                           {},
+                                           token
+                                       ).then(() => {
+                                            setDrawnCard(discardTopCard);
+                                            setDiscardTopCard(null);
+                                            // Ensure the card taken from the pile visually flips to "Face Down" once it enters the player's hand.
+                                            // #23
+                                            return apiService.getWithAuth<Card[]>(
+                                                `/games/${gameId}/my-hand`,
+                                                token
+                                            );
+                                       }).then((hand) => {
+                                           setMyHand(hand); // Hand is updated with face up ca
+                                       }).catch((error) => {
+                                           console.error("Failed to draw from discard pile:", error);
+                                       });
+                                  }}
+                                  disabled={!isMyTurn || !!drawnCard || !discardTopCard}
                               />
                               <p>Discard Pile</p>
                           </div>
