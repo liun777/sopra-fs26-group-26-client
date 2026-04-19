@@ -1406,7 +1406,8 @@ h1 {
 
 /* next 4 blocks are for card animations flying*/
 .game-pile-card-anchor,
-.game-own-card-anchor {
+.game-own-card-anchor,
+.game-opponent-card-anchor {
   display: inline-flex;
 }
 
@@ -1502,6 +1503,78 @@ h1 {
   text-align: center;
 }
 
+.game-turn-action-buttons {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.game-turn-action-buttons .ant-btn {
+  min-width: 136px;
+}
+
+.game-turn-action-btn.ant-btn,
+.game-turn-action-btn.ant-btn:hover,
+.game-turn-action-btn.ant-btn:focus {
+  color: #dfffe9 !important;
+  border-color: #34e27a !important;
+  background: rgba(52, 226, 122, 0.16) !important;
+  box-shadow:
+    0 0 0 2px rgba(52, 226, 122, 0.26),
+    0 0 14px rgba(52, 226, 122, 0.38);
+  animation: gameAbilityButtonPulse 1.2s ease-in-out infinite;
+}
+
+.game-turn-action-btn.ant-btn.ant-btn-loading,
+.game-turn-action-btn.ant-btn.ant-btn-loading:hover,
+.game-turn-action-btn.ant-btn.ant-btn-loading:focus {
+  color: #dfffe9 !important;
+  border-color: #34e27a !important;
+  background: rgba(52, 226, 122, 0.16) !important;
+}
+
+.game-turn-action-btn-use-selected.ant-btn,
+.game-turn-action-btn-use-selected.ant-btn:hover,
+.game-turn-action-btn-use-selected.ant-btn:focus {
+  color: #fff5e8 !important;
+  border-color: #ffb14a !important;
+  background: rgba(255, 177, 74, 0.2) !important;
+  box-shadow:
+    0 0 0 2px rgba(255, 177, 74, 0.42),
+    0 0 16px rgba(255, 177, 74, 0.68);
+  animation: gameSelectedPilePulse 1.2s ease-in-out infinite;
+}
+
+.game-turn-action-btn.ant-btn[disabled],
+.game-turn-action-btn.ant-btn[disabled]:hover,
+.game-turn-action-btn.ant-btn[disabled]:focus {
+  color: #9eb7a8 !important;
+  border-color: rgba(158, 183, 168, 0.7) !important;
+  background: rgba(90, 112, 100, 0.35) !important;
+  box-shadow: none !important;
+  animation: none;
+}
+
+@keyframes gameAbilityButtonPulse {
+  0% {
+    box-shadow:
+      0 0 0 2px rgba(52, 226, 122, 0.22),
+      0 0 8px rgba(52, 226, 122, 0.24);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(52, 226, 122, 0.34),
+      0 0 16px rgba(52, 226, 122, 0.52);
+  }
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(52, 226, 122, 0.22),
+      0 0 8px rgba(52, 226, 122, 0.24);
+  }
+}
+
 /* Top right buttons */
 .top-right-buttons {
   position: absolute;
@@ -1585,5 +1658,15 @@ h1 {
 
   .game-center-turn-timer {
     width: min(180px, 64vw);
+  }
+
+  .game-turn-action-buttons {
+    gap: 6px;
+  }
+
+  .game-turn-action-buttons .ant-btn {
+    min-width: 124px;
+    font-size: 12px;
+    padding-inline: 8px;
   }
 }

@@ -66,10 +66,14 @@ const Dashboard = () => {
 
   const { value: userId, clear: clearUserId } = useLocalStorage<string>("userId", "");
   const { value: token, clear: clearToken } = useLocalStorage<string>("token", "");
+  const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
+  const normalizedToken = typeof token === "string" ? token.trim() : "";
 
   // user vom back end holen via get request und speichern, fehlermeldung falls es nicht geht.
   useEffect(() => {
-    if (!userId.trim()) {
+    if (!normalizedUserId || !normalizedToken) {
+      clearToken();
+      clearUserId();
       router.replace("/login");
       return;
     }
@@ -78,11 +82,21 @@ const Dashboard = () => {
 
     const fetchUser = async () => {
       try {
-        const fetchedUser = await apiService.get<User>(`/users/${encodeURIComponent(userId)}`);
+        const fetchedUser = await apiService.getWithAuth<User>(
+          `/users/${encodeURIComponent(normalizedUserId)}`,
+          normalizedToken,
+        );
         if (active) {
           setUser(fetchedUser);
         }
       } catch (error) {
+        const status = (error as { status?: number })?.status;
+        if (active && (status === 401 || status === 403 || status === 404)) {
+          clearToken();
+          clearUserId();
+          router.replace("/login");
+          return;
+        }
         if (active && error instanceof Error) {
           alert(`Something went wrong:\n${error.message}`);
         }
@@ -94,10 +108,10 @@ const Dashboard = () => {
     return () => {
       active = false;
     };
-  }, [apiService, userId, router]);
+  }, [apiService, normalizedUserId, normalizedToken, router, clearToken, clearUserId]);
 
   useEffect(() => {
-    const authToken = token.trim();
+    const authToken = normalizedToken;
     if (!authToken) {
       setLiveConnected(false);
       return;
@@ -126,7 +140,7 @@ const Dashboard = () => {
       setLiveConnected(false);
       void client.deactivate();
     };
-  }, [token]);
+  }, [normalizedToken]);
 
   const greeting = useMemo(() => {
     const localHour = new Date().getHours();
@@ -136,7 +150,7 @@ const Dashboard = () => {
 
   // für logout button:
   const handleLogout = (): void => {
-    const authToken = token.trim();
+    const authToken = normalizedToken;
 
     // Local-first logout to keep UX instant even if backend/network is slow.
     clearToken();
@@ -220,7 +234,7 @@ const Dashboard = () => {
             <div className="dashboard-button-stack">
               <Button
                 type="primary"
-                onClick={() => router.push(`/users/${encodeURIComponent(userId.trim())}`)}
+                onClick={() => router.push(`/users/${encodeURIComponent(normalizedUserId)}`)}
               >
                 User Profile
               </Button>

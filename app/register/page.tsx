@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
@@ -17,8 +17,50 @@ const Register: React.FC = () => {
     const router = useRouter();
     const apiService = useApi();
     const [form] = Form.useForm();
-    const { set: setToken } = useLocalStorage<string>("token", "");
-    const { set: setUserId } = useLocalStorage<string>("userId", "");
+    const {
+        value: token,
+        set: setToken,
+        clear: clearToken,
+    } = useLocalStorage<string>("token", "");
+    const {
+        value: userId,
+        set: setUserId,
+        clear: clearUserId,
+    } = useLocalStorage<string>("userId", "");
+    const normalizedToken = typeof token === "string" ? token.trim() : "";
+    const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
+
+    useEffect(() => {
+        if (!normalizedToken || !normalizedUserId) {
+            return;
+        }
+
+        let active = true;
+        void apiService
+            .getWithAuth<User>(`/users/${encodeURIComponent(normalizedUserId)}`, normalizedToken)
+            .then((fetchedUser) => {
+                const fetchedId = String((fetchedUser as Partial<User>)?.id ?? "").trim();
+                if (!active) return;
+                if (!fetchedId || fetchedId !== normalizedUserId) {
+                    clearToken();
+                    clearUserId();
+                    return;
+                }
+                router.replace("/dashboard");
+            })
+            .catch((error) => {
+                if (!active) return;
+                const status = (error as { status?: number })?.status;
+                if (status === 401 || status === 403 || status === 404) {
+                    clearToken();
+                    clearUserId();
+                }
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [apiService, normalizedToken, normalizedUserId, router, clearToken, clearUserId]);
 
     const handleRegister = async (values: FormFieldProps) => {
         try {

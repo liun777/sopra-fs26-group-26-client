@@ -343,13 +343,18 @@ const Game = () => {
       const [isDraggingTurnCard, setIsDraggingTurnCard] = useState<boolean>(false);
       const [dragOverOwnCardIndex, setDragOverOwnCardIndex] = useState<number | null>(null);
       const [isDragOverDiscardPile, setIsDragOverDiscardPile] = useState<boolean>(false);
+      const [isDiscardPileTemporarilyHidden, setIsDiscardPileTemporarilyHidden] = useState<boolean>(false);
       const [flyingCardAnimations, setFlyingCardAnimations] = useState<FlyingCardAnimation[]>([]);
       const drawRequestInFlightRef = useRef<boolean>(false);
       const drawPileCardRef = useRef<HTMLDivElement | null>(null);
       const discardPileCardRef = useRef<HTMLDivElement | null>(null);
       const ownHandCardRefs = useRef<Array<HTMLDivElement | null>>([]);
+      const topSeatCardRefs = useRef<Array<HTMLDivElement | null>>([]);
+      const leftSeatCardRefs = useRef<Array<HTMLDivElement | null>>([]);
+      const rightSeatCardRefs = useRef<Array<HTMLDivElement | null>>([]);
       const flyingCardIdRef = useRef<number>(0);
       const flyingCardTimeoutsRef = useRef<number[]>([]);
+      const discardRevealTimeoutRef = useRef<number | null>(null);
       const [orderedPlayerIds, setOrderedPlayerIds] = useState<number[]>([]);
       const [playerCardsById, setPlayerCardsById] = useState<Record<number, SeatCardView[]>>({});
       const [playerNamesById, setPlayerNamesById] = useState<Record<number, string>>({});
@@ -813,8 +818,12 @@ const [abilitySelectedOpponentId, setAbilitySelectedOpponentId] = useState<numbe
 const [abilitySelectedOpponentCardIndex, setAbilitySelectedOpponentCardIndex] = useState<number | null>(null);
 const [isSubmittingAbility, setIsSubmittingAbility] = useState<boolean>(false);
 const [isAbilityChoicePending, setIsAbilityChoicePending] = useState<boolean>(false);
+const [isUseAbilitySelected, setIsUseAbilitySelected] = useState<boolean>(false);
 const seenAbilityPhaseRef = useRef<string>("");
-const canShowAbilityChoiceButtons = isAbilityPending && isMyTurn && isAbilityChoicePending;
+const canShowAbilityChoiceButtons =
+    isAbilityPending &&
+    isMyTurn &&
+    (isAbilityChoicePending || isUseAbilitySelected);
 const abilityPhaseLabel = gameStatus === "ability_peek_self"
     ? "PEEK"
     : gameStatus === "ability_peek_opponent"
@@ -826,7 +835,7 @@ const canInteractWithAbilityTargets =
     isAbilityPending &&
     isMyTurn &&
     !isSubmittingAbility &&
-    !isAbilityChoicePending &&
+    isUseAbilitySelected &&
     !isSkippingAbilityChoice;
 
 // reset the ability selection when the phase ends
@@ -837,11 +846,26 @@ const resetAbilitySelection = () => {
     setIsSubmittingAbility(false);
 };
 
+// find specific opponent card for animation
+const getOpponentCardAnchor = (opponentId: number, cardIndex: number): HTMLDivElement | null => {
+    if (seatAssignments.topOpponentId === opponentId) {
+        return topSeatCardRefs.current[cardIndex] ?? null;
+    }
+    if (seatAssignments.leftOpponentId === opponentId) {
+        return leftSeatCardRefs.current[cardIndex] ?? null;
+    }
+    if (seatAssignments.rightOpponentId === opponentId) {
+        return rightSeatCardRefs.current[cardIndex] ?? null;
+    }
+    return null;
+};
+
 // #28: reset ability state when phase changes and require explicit use/skip choice
 useEffect(() => {
     if (!isAbilityPending) {
         seenAbilityPhaseRef.current = "";
         setIsAbilityChoicePending(false);
+        setIsUseAbilitySelected(false);
         setIsSkippingAbilityChoice(false);
         resetAbilitySelection();
         return;
@@ -850,6 +874,7 @@ useEffect(() => {
     if (isMyTurn && seenAbilityPhaseRef.current !== gameStatus) {
         seenAbilityPhaseRef.current = gameStatus;
         setIsAbilityChoicePending(true);
+        setIsUseAbilitySelected(false);
     }
 }, [isAbilityPending, isMyTurn, gameStatus]);
 
@@ -911,16 +936,28 @@ const handleAbilityOpponentCardClick = (opponentId: number, cardIndex: number) =
 
     } else if (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null) {
         // 11/12: own card already selected, now swap
+        const ownCardIndex = abilitySelectedOwnCardIndex;
+        const ownCardAnchor = ownHandCardRefs.current[ownCardIndex] ?? null;
+        const opponentCardAnchor = getOpponentCardAnchor(opponentId, cardIndex);
+
         setIsSubmittingAbility(true);
         void apiService.postWithAuth(
             `/games/${gameId}/abilities/swap`,
             {
-                ownCardIndex: abilitySelectedOwnCardIndex,
+                ownCardIndex,
                 targetUserId: opponentId,
                 targetCardIndex: cardIndex,
             },
             token
         ).then(() => {
+            if (ownCardAnchor && opponentCardAnchor) {
+                launchFlyingCardAnimation(ownCardAnchor, opponentCardAnchor, {
+                    hidden: true,
+                });
+                launchFlyingCardAnimation(opponentCardAnchor, ownCardAnchor, {
+                    hidden: true,
+                });
+            }
             resetAbilitySelection();
             return apiService.getWithAuth<Card[]>(
                 `/games/${gameId}/my-hand`,
@@ -960,6 +997,22 @@ const clearFlyingCardTimer = () => {
         window.clearTimeout(timeoutId);
     }
     flyingCardTimeoutsRef.current = [];
+};
+
+const clearDiscardRevealTimer = () => {
+    if (discardRevealTimeoutRef.current != null) {
+        window.clearTimeout(discardRevealTimeoutRef.current);
+        discardRevealTimeoutRef.current = null;
+    }
+};
+
+const triggerDiscardFlipReveal = () => {
+    clearDiscardRevealTimer();
+    setIsDiscardPileTemporarilyHidden(true);
+    discardRevealTimeoutRef.current = window.setTimeout(() => {
+        setIsDiscardPileTemporarilyHidden(false);
+        discardRevealTimeoutRef.current = null;
+    }, 240);
 };
 
 const launchFlyingCardAnimation = (
@@ -1036,6 +1089,7 @@ const swapDrawnCardWithHand = (targetCardIndex: number) => {
                 hidden: swappedOutHandCardHidden,
                 value: swappedOutHandCard.value,
             });
+            triggerDiscardFlipReveal();
         }
         setDrawnCard(null);
         setSelectedDrawSource(null);
@@ -1309,6 +1363,7 @@ const chooseUseAbility = () => {
     if (!canShowAbilityChoiceButtons) {
         return;
     }
+    setIsUseAbilitySelected(true);
     setIsAbilityChoicePending(false);
 };
 
@@ -1343,6 +1398,7 @@ useEffect(() => {
 useEffect(() => {
     return () => {
         clearFlyingCardTimer();
+        clearDiscardRevealTimer();
     };
 }, []);
 
@@ -1358,7 +1414,7 @@ const centerTurnActionLabel = useMemo(() => {
 
     if (isAbilityPending) {
         if (isAbilityChoicePending) {
-            return `${abilityPhaseLabel}: Use Ability or Skip ${suffix}`;
+            return `${abilityPhaseLabel}: ${abilityPhaseLabel} or End Turn ${suffix}`;
         }
         if (gameStatus === "ability_peek_self") {
             return `PEEK: choose one own card ${suffix}`;
@@ -1395,6 +1451,7 @@ const centerTurnActionLabel = useMemo(() => {
     abilitySelectedOwnCardIndex,
     canSwapDrawnCardWithHand,
     selectedDrawSource,
+    isUseAbilitySelected,
 ]);
 
 const playerListRows = tablePlayerIds.map((id) => {
@@ -1444,33 +1501,40 @@ const playerListRows = tablePlayerIds.map((id) => {
                   {seatAssignments.topOpponentId != null && (
                       <div className="top-cards opponent-seat-top">
                           {topSeatCards.map((card, index) => (
-                             <CardComponent
-                                 key={`top-${index}`}
-                                 hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
-                                 value={card.value}
-                                 size="small"
-                                 // #28: highlight opponent cards during ability phase
-                                 onClick={() => {
-                                     if (canInteractWithAbilityTargets && seatAssignments.topOpponentId != null) {
-                                         handleAbilityOpponentCardClick(seatAssignments.topOpponentId, index);
-                                     }
-                                 }}
-                                 disabled={
-                                     !(canInteractWithAbilityTargets && (
-                                         gameStatus === "ability_peek_opponent" ||
-                                         (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
-                                     ))
-                                 }
-                                 style={
-                                     canInteractWithAbilityTargets && (
-                                         gameStatus === "ability_peek_opponent" ||
-                                         (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
-                                     ) ? {
-                                         outline: "3px solid #c4827a",
-                                         outlineOffset: "2px",
-                                     } : undefined
-                                 }
-                             />
+                              <div
+                                  key={`top-${index}`}
+                                  ref={(element) => {
+                                      topSeatCardRefs.current[index] = element;
+                                  }}
+                                  className="game-opponent-card-anchor"
+                              >
+                                  <CardComponent
+                                      hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
+                                      value={card.value}
+                                      size="small"
+                                      // #28: highlight opponent cards during ability phase
+                                      onClick={() => {
+                                          if (canInteractWithAbilityTargets && seatAssignments.topOpponentId != null) {
+                                              handleAbilityOpponentCardClick(seatAssignments.topOpponentId, index);
+                                          }
+                                      }}
+                                      disabled={
+                                          !(canInteractWithAbilityTargets && (
+                                              gameStatus === "ability_peek_opponent" ||
+                                              (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                          ))
+                                      }
+                                      style={
+                                          canInteractWithAbilityTargets && (
+                                              gameStatus === "ability_peek_opponent" ||
+                                              (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                          ) ? {
+                                              outline: "3px solid #c4827a",
+                                              outlineOffset: "2px",
+                                          } : undefined
+                                      }
+                                  />
+                              </div>
                           ))}
                       </div>
                   )}
@@ -1479,33 +1543,40 @@ const playerListRows = tablePlayerIds.map((id) => {
                   {seatAssignments.leftOpponentId != null && (
                       <div className="left-cards opponent-seat-left">
                           {leftSeatCards.map((card, index) => (
-                              <CardComponent
+                              <div
                                   key={`left-${index}`}
-                                  hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
-                                  value={card.value}
-                                  size="small"
-                                  // #28: highlight opponent cards during ability phase
-                                  onClick={() => {
-                                      if (canInteractWithAbilityTargets && seatAssignments.leftOpponentId != null) {
-                                          handleAbilityOpponentCardClick(seatAssignments.leftOpponentId, index);
-                                      }
+                                  ref={(element) => {
+                                      leftSeatCardRefs.current[index] = element;
                                   }}
-                                  disabled={
-                                      !(canInteractWithAbilityTargets && (
-                                          gameStatus === "ability_peek_opponent" ||
-                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
-                                      ))
-                                  }
-                                  style={
-                                      canInteractWithAbilityTargets && (
-                                          gameStatus === "ability_peek_opponent" ||
-                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
-                                      ) ? {
-                                          outline: "3px solid #c4827a",
-                                          outlineOffset: "2px",
-                                      } : undefined
-                                  }
-                              />
+                                  className="game-opponent-card-anchor"
+                              >
+                                  <CardComponent
+                                      hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
+                                      value={card.value}
+                                      size="small"
+                                      // #28: highlight opponent cards during ability phase
+                                      onClick={() => {
+                                          if (canInteractWithAbilityTargets && seatAssignments.leftOpponentId != null) {
+                                              handleAbilityOpponentCardClick(seatAssignments.leftOpponentId, index);
+                                          }
+                                      }}
+                                      disabled={
+                                          !(canInteractWithAbilityTargets && (
+                                              gameStatus === "ability_peek_opponent" ||
+                                              (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                          ))
+                                      }
+                                      style={
+                                          canInteractWithAbilityTargets && (
+                                              gameStatus === "ability_peek_opponent" ||
+                                              (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                          ) ? {
+                                              outline: "3px solid #c4827a",
+                                              outlineOffset: "2px",
+                                          } : undefined
+                                      }
+                                  />
+                              </div>
                           ))}
                       </div>
                   )}
@@ -1514,33 +1585,40 @@ const playerListRows = tablePlayerIds.map((id) => {
                   {seatAssignments.rightOpponentId != null && (
                       <div className="right-cards opponent-seat-right">
                           {rightSeatCards.map((card, index) => (
-                              <CardComponent
+                              <div
                                   key={`right-${index}`}
-                                  hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
-                                  value={card.value}
-                                  size="small"
-                                  // #28: highlight opponent cards during ability phase
-                                  onClick={() => {
-                                      if (canInteractWithAbilityTargets && seatAssignments.rightOpponentId != null) {
-                                          handleAbilityOpponentCardClick(seatAssignments.rightOpponentId, index);
-                                      }
+                                  ref={(element) => {
+                                      rightSeatCardRefs.current[index] = element;
                                   }}
-                                  disabled={
-                                      !(canInteractWithAbilityTargets && (
-                                          gameStatus === "ability_peek_opponent" ||
-                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
-                                      ))
-                                  }
-                                  style={
-                                      canInteractWithAbilityTargets && (
-                                          gameStatus === "ability_peek_opponent" ||
-                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
-                                      ) ? {
-                                          outline: "3px solid #c4827a",
-                                          outlineOffset: "2px",
-                                      } : undefined
-                                  }
-                              />
+                                  className="game-opponent-card-anchor"
+                              >
+                                  <CardComponent
+                                      hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
+                                      value={card.value}
+                                      size="small"
+                                      // #28: highlight opponent cards during ability phase
+                                      onClick={() => {
+                                          if (canInteractWithAbilityTargets && seatAssignments.rightOpponentId != null) {
+                                              handleAbilityOpponentCardClick(seatAssignments.rightOpponentId, index);
+                                          }
+                                      }}
+                                      disabled={
+                                          !(canInteractWithAbilityTargets && (
+                                              gameStatus === "ability_peek_opponent" ||
+                                              (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                          ))
+                                      }
+                                      style={
+                                          canInteractWithAbilityTargets && (
+                                              gameStatus === "ability_peek_opponent" ||
+                                              (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
+                                          ) ? {
+                                              outline: "3px solid #c4827a",
+                                              outlineOffset: "2px",
+                                          } : undefined
+                                      }
+                                  />
+                              </div>
                           ))}
                       </div>
                   )}
@@ -1571,7 +1649,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                       <div className="pile">
                           <div ref={discardPileCardRef} className="game-pile-card-anchor">
                               <CardComponent
-                                  hidden={false}
+                                  hidden={isDiscardPileTemporarilyHidden}
                                   value={visibleDiscardPileCard?.value}
                                   size="medium"
                                   onClick={() => {
@@ -1616,6 +1694,29 @@ const playerListRows = tablePlayerIds.map((id) => {
                               />
                           </div>
                           <p className="game-turn-progress-label">{centerTurnActionLabel}</p>
+                          {canShowAbilityChoiceButtons && (
+                              <div className="game-turn-action-buttons">
+                                  <Button
+                                      type="default"
+                                      className={`game-turn-action-btn game-turn-action-btn-use${
+                                          isUseAbilitySelected ? " game-turn-action-btn-use-selected" : ""
+                                      }`}
+                                      disabled={isSkippingAbilityChoice || isSubmittingAbility}
+                                      onClick={chooseUseAbility}
+                                  >
+                                      {abilityPhaseLabel === "Ability" ? "Use Ability" : abilityPhaseLabel}
+                                  </Button>
+                                  <Button
+                                      type="default"
+                                      className="game-turn-action-btn game-turn-action-btn-skip"
+                                      disabled={isSkippingAbilityChoice || isSubmittingAbility || isUseAbilitySelected}
+                                      loading={isSkippingAbilityChoice}
+                                      onClick={skipAbilityChoice}
+                                  >
+                                      End Turn
+                                  </Button>
+                              </div>
+                          )}
                       </div>
                   )}
 
@@ -1623,25 +1724,6 @@ const playerListRows = tablePlayerIds.map((id) => {
                   <div className="top-right-buttons">
                       <Button disabled={!isMyTurnUi}>Scores</Button>
                       <Button type="primary" disabled={!isMyTurnUi}>Call Cabo</Button>
-                      {canShowAbilityChoiceButtons && (
-                          <>
-                              <Button
-                                  type="default"
-                                  disabled={isSkippingAbilityChoice || isSubmittingAbility}
-                                  onClick={chooseUseAbility}
-                              >
-                                  {`Use ${abilityPhaseLabel}`}
-                              </Button>
-                              <Button
-                                  type="default"
-                                  disabled={isSkippingAbilityChoice || isSubmittingAbility}
-                                  loading={isSkippingAbilityChoice}
-                                  onClick={skipAbilityChoice}
-                              >
-                                  Skip Ability
-                              </Button>
-                          </>
-                      )}
                   </div>
 
                   {/* Bottom cards are only itneractable when its users turn*/}

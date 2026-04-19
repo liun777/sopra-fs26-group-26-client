@@ -66,11 +66,12 @@ export class ApiService {
    * @returns JSON data of type T.
    */
 
-  // schickt GET Request ans backend um verschiedene User Profile zu holen.
+  // schickt GET Request ans backend um verschiedene User Profile zu holen. Cache disabled to make redirect no break in case of outdated token etc.
   public async get<T>(endpoint: string): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const res = await fetch(url, {
       method: "GET",
+      cache: "no-store",
       headers: this.defaultHeaders,
     });
     return this.processResponse<T>(
@@ -145,16 +146,43 @@ export class ApiService {
     };
   }
 
+  private handleUnauthorized(status?: number): void {
+    if (status !== 401 || typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      globalThis.localStorage.removeItem("token");
+      globalThis.localStorage.removeItem("userId");
+      globalThis.localStorage.removeItem("activeSessionId");
+      globalThis.localStorage.removeItem("pendingInitialPeekGameId");
+    } catch {
+      // best-effort cleanup only
+    }
+
+    const pathname = globalThis.location?.pathname ?? "";
+    const isAuthRoute = pathname === "/" || pathname === "/login" || pathname === "/register";
+    if (!isAuthRoute) {
+      globalThis.location.assign("/login");
+    }
+  }
+
   public async getWithAuth<T>(endpoint: string, token: string): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const res = await fetch(url, {
       method: "GET",
+      cache: "no-store", // Cache disabled to make redirect no break in case of outdated token etc.
       headers: this.authHeaders(token),
     });
-    return this.processResponse<T>(
-      res,
-      "An error occurred while fetching the data.\n",
-    );
+    try {
+      return await this.processResponse<T>(
+        res,
+        "An error occurred while fetching the data.\n",
+      );
+    } catch (error) {
+      this.handleUnauthorized((error as Partial<ApplicationError>)?.status);
+      throw error;
+    }
   }
 
   public async postWithAuth<T>(
@@ -168,10 +196,15 @@ export class ApiService {
       headers: this.authHeaders(token),
       body: JSON.stringify(data),
     });
-    return this.processResponse<T>(
-      res,
-      "An error occurred while posting the data.\n",
-    );
+    try {
+      return await this.processResponse<T>(
+        res,
+        "An error occurred while posting the data.\n",
+      );
+    } catch (error) {
+      this.handleUnauthorized((error as Partial<ApplicationError>)?.status);
+      throw error;
+    }
   }
 
   public async putWithAuth<T>(
@@ -185,10 +218,15 @@ export class ApiService {
       headers: this.authHeaders(token),
       body: JSON.stringify(data),
     });
-    return this.processResponse<T>(
-      res,
-      "An error occurred while updating the data.\n",
-    );
+    try {
+      return await this.processResponse<T>(
+        res,
+        "An error occurred while updating the data.\n",
+      );
+    } catch (error) {
+      this.handleUnauthorized((error as Partial<ApplicationError>)?.status);
+      throw error;
+    }
   }
 
   public async patchWithAuth<T>(
@@ -202,9 +240,14 @@ export class ApiService {
       headers: this.authHeaders(token),
       body: JSON.stringify(data),
     });
-    return this.processResponse<T>(
-      res,
-      "An error occurred while updating the data.\n",
-    );
+    try {
+      return await this.processResponse<T>(
+        res,
+        "An error occurred while updating the data.\n",
+      );
+    } catch (error) {
+      this.handleUnauthorized((error as Partial<ApplicationError>)?.status);
+      throw error;
+    }
   }
 }
