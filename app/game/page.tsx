@@ -55,6 +55,18 @@ type GameStateSignal = {
     players?: PlayerHandSignal[] | null;
 };
 
+type FlyingCardAnimation = {
+    id: number;
+    hidden: boolean;
+    value?: number;
+    startX: number;
+    startY: number;
+    deltaX: number;
+    deltaY: number;
+    width: number;
+    height: number;
+};
+
 function normalizeValue(value: unknown): string {
     return String(value ?? "").trim().toLowerCase();
 }
@@ -331,7 +343,13 @@ const Game = () => {
       const [isDraggingTurnCard, setIsDraggingTurnCard] = useState<boolean>(false);
       const [dragOverOwnCardIndex, setDragOverOwnCardIndex] = useState<number | null>(null);
       const [isDragOverDiscardPile, setIsDragOverDiscardPile] = useState<boolean>(false);
+      const [flyingCardAnimations, setFlyingCardAnimations] = useState<FlyingCardAnimation[]>([]);
       const drawRequestInFlightRef = useRef<boolean>(false);
+      const drawPileCardRef = useRef<HTMLDivElement | null>(null);
+      const discardPileCardRef = useRef<HTMLDivElement | null>(null);
+      const ownHandCardRefs = useRef<Array<HTMLDivElement | null>>([]);
+      const flyingCardIdRef = useRef<number>(0);
+      const flyingCardTimeoutsRef = useRef<number[]>([]);
       const [orderedPlayerIds, setOrderedPlayerIds] = useState<number[]>([]);
       const [playerCardsById, setPlayerCardsById] = useState<Record<number, SeatCardView[]>>({});
       const [playerNamesById, setPlayerNamesById] = useState<Record<number, string>>({});
@@ -933,10 +951,73 @@ const refreshDiscardPileTop = async (activeGameId: string) => {
     }
 };
 
+const clearFlyingCardTimer = () => {
+    if (flyingCardTimeoutsRef.current.length === 0) {
+        return;
+    }
+
+    for (const timeoutId of flyingCardTimeoutsRef.current) {
+        window.clearTimeout(timeoutId);
+    }
+    flyingCardTimeoutsRef.current = [];
+};
+
+const launchFlyingCardAnimation = (
+    fromElement: HTMLDivElement | null,
+    toElement: HTMLDivElement | null,
+    card: { hidden: boolean; value?: number }
+) => {
+    if (!fromElement || !toElement) {
+        return;
+    }
+
+    const fromRect = fromElement.getBoundingClientRect();
+    const toRect = toElement.getBoundingClientRect();
+    if (fromRect.width <= 0 || fromRect.height <= 0 || toRect.width <= 0 || toRect.height <= 0) {
+        return;
+    }
+
+    const animationId = flyingCardIdRef.current + 1;
+    flyingCardIdRef.current = animationId;
+
+    setFlyingCardAnimations((current) => [
+        ...current,
+        {
+        id: animationId,
+        hidden: card.hidden,
+        value: card.value,
+        startX: fromRect.left,
+        startY: fromRect.top,
+        deltaX: toRect.left - fromRect.left,
+        deltaY: toRect.top - fromRect.top,
+        width: fromRect.width,
+        height: fromRect.height,
+        },
+    ]);
+
+    const timeoutId = window.setTimeout(() => {
+        setFlyingCardAnimations((current) =>
+            current.filter((animation) => animation.id !== animationId)
+        );
+        flyingCardTimeoutsRef.current = flyingCardTimeoutsRef.current.filter((id) => id !== timeoutId);
+    }, 460);
+    flyingCardTimeoutsRef.current.push(timeoutId);
+};
+
 const swapDrawnCardWithHand = (targetCardIndex: number) => {
     if (!canSwapDrawnCardWithHand || !gameId || !token) {
         return;
     }
+
+    const drawnCardToMove = drawnCard;
+    const sourceForDrawnCard = selectedDrawSource;
+    const sourceElement =
+        sourceForDrawnCard === "discard_pile" ? discardPileCardRef.current : drawPileCardRef.current;
+    const targetElement = ownHandCardRefs.current[targetCardIndex] ?? null;
+    const swappedOutHandCard = myHand[targetCardIndex];
+    const swappedOutHandCardHidden = !peekVisibleCards[targetCardIndex];
+    const swappedOutSourceElement = ownHandCardRefs.current[targetCardIndex] ?? null;
+    const swappedOutTargetElement = discardPileCardRef.current;
 
     setIsSwappingDrawnCard(true);
     void apiService.postWithAuth(
@@ -944,6 +1025,18 @@ const swapDrawnCardWithHand = (targetCardIndex: number) => {
         { targetCardIndex },
         token
     ).then(async () => {
+        if (drawnCardToMove && sourceElement && targetElement) {
+            launchFlyingCardAnimation(sourceElement, targetElement, {
+                hidden: false,
+                value: drawnCardToMove.value,
+            });
+        }
+        if (swappedOutHandCard && swappedOutSourceElement && swappedOutTargetElement) {
+            launchFlyingCardAnimation(swappedOutSourceElement, swappedOutTargetElement, {
+                hidden: swappedOutHandCardHidden,
+                value: swappedOutHandCard.value,
+            });
+        }
         setDrawnCard(null);
         setSelectedDrawSource(null);
         setHasChosenDrawSourceThisTurn(false);
@@ -988,8 +1081,18 @@ const discardDrawnCard = () => {
         return;
     }
 
+    const drawnCardToMove = drawnCard;
+    const sourceElement = drawPileCardRef.current;
+    const targetElement = discardPileCardRef.current;
+
     setIsDiscardingDrawnCard(true);
     void tryDiscardDrawnCard(gameId, token).then(async () => {
+        if (drawnCardToMove && sourceElement && targetElement) {
+            launchFlyingCardAnimation(sourceElement, targetElement, {
+                hidden: false,
+                value: drawnCardToMove.value,
+            });
+        }
         setDrawnCard(null);
         setSelectedDrawSource(null);
         setHasChosenDrawSourceThisTurn(false);
@@ -1237,6 +1340,12 @@ useEffect(() => {
     }
 }, [canDragSelectedTurnCard]);
 
+useEffect(() => {
+    return () => {
+        clearFlyingCardTimer();
+    };
+}, []);
+
 const centerTurnActionLabel = useMemo(() => {
     if (!showCenterTurnCountdown) {
         return "";
@@ -1439,56 +1548,60 @@ const playerListRows = tablePlayerIds.map((id) => {
                   {/* CENTER */}
                   <div className="center-area">
                       <div className="pile">
-                          <CardComponent
-                              hidden={!showDrawPileAsRevealedCard}
-                              value={showDrawPileAsRevealedCard ? drawnCard?.value : undefined}
-                              size="medium"
-                              onClick={drawFromPile}
-                              draggable={isDrawPileSelectedForTurnAction && canDragSelectedTurnCard}
-                              onDragStart={handleTurnCardDragStart}
-                              onDragEnd={handleTurnCardDragEnd}
-                              disabled={!drawPileCardInteractive}
-                              style={isDrawPileSelectedForTurnAction ? selectedPileCardStyle : shouldHighlightPileChoice ? {
-                                  outline: "3px solid #34e27a",
-                                  outlineOffset: "2px",
-                                  boxShadow: "0 0 0 2px rgba(52, 226, 122, 0.3)",
-                              } : undefined}
-                          />
+                          <div ref={drawPileCardRef} className="game-pile-card-anchor">
+                              <CardComponent
+                                  hidden={!showDrawPileAsRevealedCard}
+                                  value={showDrawPileAsRevealedCard ? drawnCard?.value : undefined}
+                                  size="medium"
+                                  onClick={drawFromPile}
+                                  draggable={isDrawPileSelectedForTurnAction && canDragSelectedTurnCard}
+                                  onDragStart={handleTurnCardDragStart}
+                                  onDragEnd={handleTurnCardDragEnd}
+                                  disabled={!drawPileCardInteractive}
+                                  style={isDrawPileSelectedForTurnAction ? selectedPileCardStyle : shouldHighlightPileChoice ? {
+                                      outline: "3px solid #34e27a",
+                                      outlineOffset: "2px",
+                                      boxShadow: "0 0 0 2px rgba(52, 226, 122, 0.3)",
+                                  } : undefined}
+                              />
+                          </div>
                           <p>Draw Pile</p>
                       </div>
 
                       <div className="pile">
-                          <CardComponent
-                              hidden={false}
-                              value={visibleDiscardPileCard?.value}
-                              size="medium"
-                              onClick={() => {
-                                  if (canDiscardDrawnCard) {
-                                      discardDrawnCard();
-                                      return;
-                                  }
-                                  if (canDrawFromDiscardPile) {
-                                      drawFromDiscardPile();
-                                  }
-                              }}
-                              draggable={isDiscardPileSelectedForTurnAction && canDragSelectedTurnCard}
-                              onDragStart={handleTurnCardDragStart}
-                              onDragEnd={handleTurnCardDragEnd}
-                              onDragOver={handleDiscardPileDragOver}
-                              onDragEnter={handleDiscardPileDragOver}
-                              onDragLeave={handleDiscardPileDragLeave}
-                              onDrop={handleDiscardPileDrop}
-                              disabled={!discardPileCardInteractive}
-                              style={isDiscardPileSelectedForTurnAction ? selectedPileCardStyle : isDragOverDiscardPile ? {
-                                  outline: "3px dashed #ffb14a",
-                                  outlineOffset: "2px",
-                                  boxShadow: "0 0 0 2px rgba(255, 177, 74, 0.45), 0 0 18px rgba(255, 177, 74, 0.78)",
-                              } : shouldHighlightDiscardPileAsAction ? {
-                                  outline: "3px solid #34e27a",
-                                  outlineOffset: "2px",
-                                  boxShadow: "0 0 0 2px rgba(52, 226, 122, 0.3)",
-                              } : undefined}
-                          />
+                          <div ref={discardPileCardRef} className="game-pile-card-anchor">
+                              <CardComponent
+                                  hidden={false}
+                                  value={visibleDiscardPileCard?.value}
+                                  size="medium"
+                                  onClick={() => {
+                                      if (canDiscardDrawnCard) {
+                                          discardDrawnCard();
+                                          return;
+                                      }
+                                      if (canDrawFromDiscardPile) {
+                                          drawFromDiscardPile();
+                                      }
+                                  }}
+                                  draggable={isDiscardPileSelectedForTurnAction && canDragSelectedTurnCard}
+                                  onDragStart={handleTurnCardDragStart}
+                                  onDragEnd={handleTurnCardDragEnd}
+                                  onDragOver={handleDiscardPileDragOver}
+                                  onDragEnter={handleDiscardPileDragOver}
+                                  onDragLeave={handleDiscardPileDragLeave}
+                                  onDrop={handleDiscardPileDrop}
+                                  disabled={!discardPileCardInteractive}
+                                  style={isDiscardPileSelectedForTurnAction ? selectedPileCardStyle : isDragOverDiscardPile ? {
+                                      outline: "3px dashed #ffb14a",
+                                      outlineOffset: "2px",
+                                      boxShadow: "0 0 0 2px rgba(255, 177, 74, 0.45), 0 0 18px rgba(255, 177, 74, 0.78)",
+                                  } : shouldHighlightDiscardPileAsAction ? {
+                                      outline: "3px solid #34e27a",
+                                      outlineOffset: "2px",
+                                      boxShadow: "0 0 0 2px rgba(52, 226, 122, 0.3)",
+                                  } : undefined}
+                              />
+                          </div>
                           <p>Discard Pile</p>
                       </div>
                   </div>
@@ -1586,39 +1699,76 @@ const playerListRows = tablePlayerIds.map((id) => {
                           } : cardStyle;
 
                           return (
-                              <CardComponent
-                                key={i}
-                                hidden={!peekVisibleCards[i]}  // #16 selected cards are face-up locally
-                                value={card?.value}
-                                size="large"
-                                onClick={() => {
-                                    if (isPeekPhase) {
-                                        handlePeekCardClick(i);
-                                        return;
-                                    }
+                              <div
+                                  key={i}
+                                  ref={(element) => {
+                                      ownHandCardRefs.current[i] = element;
+                                  }}
+                                  className="game-own-card-anchor"
+                              >
+                                  <CardComponent
+                                    hidden={!peekVisibleCards[i]}  // #16 selected cards are face-up locally
+                                    value={card?.value}
+                                    size="large"
+                                    onClick={() => {
+                                        if (isPeekPhase) {
+                                            handlePeekCardClick(i);
+                                            return;
+                                        }
 
-                                    if (canClickOwnCardForAbility) {
-                                        handleAbilityOwnCardClick(i);
-                                        return;
-                                    }
+                                        if (canClickOwnCardForAbility) {
+                                            handleAbilityOwnCardClick(i);
+                                            return;
+                                        }
 
-                                    if (canSwapDrawnCardWithHand) {
-                                        swapDrawnCardWithHand(i);
-                                        return;
-                                    }
-                                }}
-                                disabled={isPeekPhase
-                                    ? (isSubmittingInitialPeek || isPeekCardSelected || (!isPeekCardSelected && revealedPeekCount >= 2))
-                                    : !(canClickOwnCardForAbility || canSwapDrawnCardWithHand)}
-                                onDragOver={(event) => handleOwnCardDragOver(event, i)}
-                                onDragEnter={(event) => handleOwnCardDragOver(event, i)}
-                                onDragLeave={() => handleOwnCardDragLeave(i)}
-                                onDrop={(event) => handleOwnCardDrop(event, i)}
-                                style={finalCardStyle}
-                              />
+                                        if (canSwapDrawnCardWithHand) {
+                                            swapDrawnCardWithHand(i);
+                                            return;
+                                        }
+                                    }}
+                                    disabled={isPeekPhase
+                                        ? (isSubmittingInitialPeek || isPeekCardSelected || (!isPeekCardSelected && revealedPeekCount >= 2))
+                                        : !(canClickOwnCardForAbility || canSwapDrawnCardWithHand)}
+                                    onDragOver={(event) => handleOwnCardDragOver(event, i)}
+                                    onDragEnter={(event) => handleOwnCardDragOver(event, i)}
+                                    onDragLeave={() => handleOwnCardDragLeave(i)}
+                                    onDrop={(event) => handleOwnCardDrop(event, i)}
+                                    style={finalCardStyle}
+                                  />
+                              </div>
                           );
                       })}
                   </div>
+
+                  {flyingCardAnimations.length > 0 && (
+                      <div className="game-flying-card-layer" aria-hidden="true">
+                          {flyingCardAnimations.map((animation) => (
+                              <div
+                                  key={animation.id}
+                                  className="game-flying-card"
+                                  style={{
+                                      left: `${animation.startX}px`,
+                                      top: `${animation.startY}px`,
+                                      width: `${animation.width}px`,
+                                      height: `${animation.height}px`,
+                                      ["--fly-delta-x" as string]: `${animation.deltaX}px`,
+                                      ["--fly-delta-y" as string]: `${animation.deltaY}px`,
+                                  } as React.CSSProperties}
+                              >
+                                  <CardComponent
+                                      hidden={animation.hidden}
+                                      value={animation.value}
+                                      size="medium"
+                                      style={{
+                                          width: "100%",
+                                          height: "100%",
+                                          pointerEvents: "none",
+                                      }}
+                                  />
+                              </div>
+                          ))}
+                      </div>
+                  )}
 
               </div>
           </div>

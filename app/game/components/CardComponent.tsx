@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 interface CardProps {
   hidden: boolean;        // true = card back, false = show value
@@ -21,6 +21,8 @@ const getCardImagePath = (value: number): string => {
   return `/card${value}.png`;
 };
 
+const FLIP_ANIMATION_MS = 280;
+
 const CardComponent: React.FC<CardProps> = ({
   hidden,
   value,
@@ -36,6 +38,33 @@ const CardComponent: React.FC<CardProps> = ({
   onDragEnter,
   onDragLeave,
 }) => {
+  const [flipClass, setFlipClass] = useState<string>("");
+  const previousHiddenRef = useRef<boolean>(hidden);
+  const flipResetTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const previousHidden = previousHiddenRef.current;
+    if (previousHidden !== hidden) {
+      setFlipClass(hidden ? "card-flip-to-back" : "card-flip-to-front");
+      if (flipResetTimeoutRef.current != null) {
+        window.clearTimeout(flipResetTimeoutRef.current);
+      }
+      flipResetTimeoutRef.current = window.setTimeout(() => {
+        setFlipClass("");
+        flipResetTimeoutRef.current = null;
+      }, FLIP_ANIMATION_MS);
+    }
+    previousHiddenRef.current = hidden;
+  }, [hidden]);
+
+  useEffect(() => {
+    return () => {
+      if (flipResetTimeoutRef.current != null) {
+        window.clearTimeout(flipResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleClick = () => {
     if (!disabled && onClick) {
       onClick();
@@ -44,6 +73,23 @@ const CardComponent: React.FC<CardProps> = ({
 
   const cursorStyle = disabled ? "not-allowed" : draggable ? "grab" : onClick ? "pointer" : "default";
   const opacityStyle = disabled ? 0.6 : 1;
+  const cardClassName = `card ${size}${flipClass ? ` ${flipClass}` : ""}`;
+  const flipAnimationName =
+    flipClass === "card-flip-to-front"
+      ? "gameCardFlipToFront"
+      : flipClass === "card-flip-to-back"
+        ? "gameCardFlipToBack"
+        : "";
+  const baseAnimation =
+    typeof style?.animation === "string" && style.animation.trim().length > 0
+      ? style.animation
+      : "";
+  const mergedAnimation =
+    flipAnimationName && baseAnimation
+      ? `${baseAnimation}, ${flipAnimationName} ${FLIP_ANIMATION_MS}ms ease-out`
+      : flipAnimationName
+        ? `${flipAnimationName} ${FLIP_ANIMATION_MS}ms ease-out`
+        : baseAnimation || undefined;
 
 
 // card backsides
@@ -51,7 +97,7 @@ const CardComponent: React.FC<CardProps> = ({
     // card back — uses the existing .card CSS class with cards.png background
     return (
       <div
-        className={`card ${size}`}
+        className={cardClassName}
         onClick={handleClick}
         draggable={!disabled && draggable}
         onDragStart={onDragStart}
@@ -64,6 +110,7 @@ const CardComponent: React.FC<CardProps> = ({
           cursor: cursorStyle,
           opacity: opacityStyle,
           ...style,
+          ...(mergedAnimation ? { animation: mergedAnimation } : {}),
         }}
       />
     );
@@ -74,7 +121,7 @@ const CardComponent: React.FC<CardProps> = ({
 
   return (
     <div
-          className={`card ${size}`}
+          className={cardClassName}
           onClick={handleClick}
           draggable={!disabled && draggable}
           onDragStart={onDragStart}
@@ -96,6 +143,7 @@ const CardComponent: React.FC<CardProps> = ({
             border: "2px solid #999",
             position: "relative",
             ...style,
+            ...(mergedAnimation ? { animation: mergedAnimation } : {}),
           }}
         >
           {/* if no picture yet show value with white backgorund */}
