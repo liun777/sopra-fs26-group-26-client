@@ -1281,12 +1281,14 @@ h1 {
 /* Top center cards */
 .top-cards {
   position: absolute;
-  top: 40px;
+  top: max(40px, calc(env(safe-area-inset-top) + 20px));
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
 
-.top-cards.opponent-seat-top .card {
+.top-cards.opponent-seat-top .game-opponent-card-anchor {
   transform: rotate(180deg);
 }
 
@@ -1352,31 +1354,33 @@ h1 {
 /* Left side */
 .left-cards {
   position: absolute;
-  left: 40px;
+  left: max(24px, calc(env(safe-area-inset-left) + 12px));
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 6px;
 
 }
 
-.left-cards.opponent-seat-left .card {
+.left-cards.opponent-seat-left .game-opponent-card-anchor {
   transform: rotate(-90deg);
 }
 
 /* Right side */
 .right-cards {
   position: absolute;
-  right: 40px;
+  right: max(24px, calc(env(safe-area-inset-right) + 12px));
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 6px;
 }
 
-.right-cards.opponent-seat-right .card {
+.right-cards.opponent-seat-right .game-opponent-card-anchor {
   transform: rotate(90deg);
 }
 
@@ -1409,6 +1413,45 @@ h1 {
 .game-own-card-anchor,
 .game-opponent-card-anchor {
   display: inline-flex;
+}
+
+.game-opponent-seat-cards-top {
+  display: flex;
+  gap: 10px;
+}
+
+.game-opponent-seat-cards-left,
+.game-opponent-seat-cards-right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.game-opponent-seat-name {
+  max-width: min(180px, 46vw);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #f3f3f3;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.game-opponent-seat-name.active {
+  color: #34e27a;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(52, 226, 122, 0.45);
+}
+
+.left-cards .game-opponent-seat-name,
+.right-cards .game-opponent-seat-name {
+  max-width: min(120px, 22vw);
 }
 
 .game-flying-card-layer {
@@ -1602,8 +1645,8 @@ h1 {
   }
 
   .top-cards {
-    top: 20px;
-    gap: 6px;
+    top: max(16px, calc(env(safe-area-inset-top) + 10px));
+    gap: 5px;
   }
 
   .game-player-list {
@@ -1626,15 +1669,35 @@ h1 {
   .left-cards,
   .right-cards {
     top: 34%;
-    gap: 6px;
+    gap: 5px;
   }
 
   .left-cards {
-    left: 8px;
+    left: max(12px, calc(env(safe-area-inset-left) + 8px));
   }
 
   .right-cards {
-    right: 8px;
+    right: max(12px, calc(env(safe-area-inset-right) + 8px));
+  }
+
+  .game-opponent-seat-cards-top {
+    gap: 6px;
+  }
+
+  .game-opponent-seat-cards-left,
+  .game-opponent-seat-cards-right {
+    gap: 6px;
+  }
+
+  .game-opponent-seat-name {
+    max-width: min(132px, 34vw);
+    font-size: 11px;
+    padding: 1px 6px;
+  }
+
+  .left-cards .game-opponent-seat-name,
+  .right-cards .game-opponent-seat-name {
+    max-width: min(96px, 24vw);
   }
 
   .center-area {
