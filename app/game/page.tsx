@@ -267,9 +267,9 @@ function toValidCardOrNull(candidate: unknown): Card | null {
 const Game = () => {
   const apiService = useApi();
   const { value: activeSessionId } = useLocalStorage<string>("activeSessionId", "");
-  const isSpectator = false;
   const gameId = activeSessionId.trim();
   const HAND_SIZE = 4; // referencing here, keeps it consistent and less prone to errors
+  const TURN_CARD_DRAG_MIME = "application/x-cabo-turn-card";
   const createHiddenPeekCards = () => Array(HAND_SIZE).fill(false); // hide card by default
 
 
@@ -321,8 +321,16 @@ const Game = () => {
       const TURN_DURATION = 30;
       // #20
       const [drawnCard, setDrawnCard] = useState<Card | null>(null);
+      const [selectedDrawSource, setSelectedDrawSource] = useState<"draw_pile" | "discard_pile" | null>(null);
+      const [hasChosenDrawSourceThisTurn, setHasChosenDrawSourceThisTurn] = useState<boolean>(false);
       const [isDrawingFromPile, setIsDrawingFromPile] = useState<boolean>(false);
+      const [isDrawingFromDiscardPile, setIsDrawingFromDiscardPile] = useState<boolean>(false);
       const [isSwappingDrawnCard, setIsSwappingDrawnCard] = useState<boolean>(false);
+      const [isDiscardingDrawnCard, setIsDiscardingDrawnCard] = useState<boolean>(false);
+      const [isSkippingAbilityChoice, setIsSkippingAbilityChoice] = useState<boolean>(false);
+      const [isDraggingTurnCard, setIsDraggingTurnCard] = useState<boolean>(false);
+      const [dragOverOwnCardIndex, setDragOverOwnCardIndex] = useState<number | null>(null);
+      const [isDragOverDiscardPile, setIsDragOverDiscardPile] = useState<boolean>(false);
       const drawRequestInFlightRef = useRef<boolean>(false);
       const [orderedPlayerIds, setOrderedPlayerIds] = useState<number[]>([]);
       const [playerCardsById, setPlayerCardsById] = useState<Record<number, SeatCardView[]>>({});
@@ -637,9 +645,17 @@ const Game = () => {
           };
       }, [apiService, tablePlayerIds, playerNamesById]);
 
-      const showTurnCountdown = !isPeekPhase && gameStatus === "round_active" && currentTurnUserId != null;
+      const isAbilityPhaseForCountdown =
+          gameStatus === "ability_peek_self" ||
+          gameStatus === "ability_peek_opponent" ||
+          gameStatus === "ability_swap";
+      const showTurnCountdown =
+          !isPeekPhase &&
+          (gameStatus === "round_active" || isAbilityPhaseForCountdown) &&
+          currentTurnUserId != null;
       const showCenterTurnCountdown =
           showTurnCountdown && selfUserId != null && currentTurnUserId === selfUserId;
+      const isMyTurnUi = isMyTurn && !isPeekPhase;
       useEffect(() => {
           if (!showTurnCountdown) {
               setTurnTimeLeft(TURN_DURATION);
@@ -660,7 +676,10 @@ const Game = () => {
           const fetchDrawnCard = async () => {
               if (!isMyTurn || !gameId || !token) {
                   setDrawnCard(null);
+                  setSelectedDrawSource(null);
+                  setHasChosenDrawSourceThisTurn(false);
                   setIsDrawingFromPile(false);
+                  setIsDrawingFromDiscardPile(false);
                   drawRequestInFlightRef.current = false;
                   return;
               }
@@ -670,12 +689,22 @@ const Game = () => {
                       `/games/${gameId}/drawn-card`,
                       token
                   );
-                  setDrawnCard(toValidCardOrNull(rawCard));
+                  // At turn entry we only trust explicit local clicks as source choice.
+                  setHasChosenDrawSourceThisTurn(false);
+                  const nextDrawnCard = toValidCardOrNull(rawCard);
+                  setDrawnCard(nextDrawnCard);
+                  if (!nextDrawnCard) {
+                      setSelectedDrawSource(null);
+                      setHasChosenDrawSourceThisTurn(false);
+                  }
               } catch {
                   // if endpoint returns no drawn card for this player yet, keep slot empty
                   setDrawnCard(null);
+                  setSelectedDrawSource(null);
+                  setHasChosenDrawSourceThisTurn(false);
               } finally {
                   setIsDrawingFromPile(false);
+                  setIsDrawingFromDiscardPile(false);
                   drawRequestInFlightRef.current = false;
               }
           };
@@ -708,9 +737,56 @@ const isAbilityPending =
     gameStatus === "ability_peek_opponent" ||
     gameStatus === "ability_swap";
 
-const canDrawFromPile = isMyTurn && !isPeekPhase && !drawnCard && !isDrawingFromPile && !isSwappingDrawnCard && !isAbilityPending;
-const canSwapDrawnCardWithHand = isMyTurn && !isPeekPhase && !!drawnCard && !isSwappingDrawnCard && !isAbilityPending;
+const isRoundActive = gameStatus === "round_active";
+const isStandardTurnActionBlocked =
+    !isMyTurn ||
+    !isRoundActive ||
+    isPeekPhase ||
+    isDrawingFromPile ||
+    isDrawingFromDiscardPile ||
+    isSwappingDrawnCard ||
+    isDiscardingDrawnCard ||
+    isAbilityPending;
+const canDrawFromPile = !isStandardTurnActionBlocked && !drawnCard;
+const canDrawFromDiscardPile = !isStandardTurnActionBlocked && !drawnCard;
+const canSwapDrawnCardWithHand =
+    !isStandardTurnActionBlocked &&
+    !!drawnCard &&
+    selectedDrawSource !== null &&
+    hasChosenDrawSourceThisTurn;
+const canDiscardDrawnCard =
+    !isStandardTurnActionBlocked &&
+    !!drawnCard &&
+    selectedDrawSource === "draw_pile" &&
+    hasChosenDrawSourceThisTurn;
+const showDrawPileAsRevealedCard = selectedDrawSource === "draw_pile" && !!drawnCard;
+const isDrawPileSelectedForTurnAction =
+    hasChosenDrawSourceThisTurn && selectedDrawSource === "draw_pile" && !!drawnCard;
+const isDiscardPileSelectedForTurnAction =
+    hasChosenDrawSourceThisTurn && selectedDrawSource === "discard_pile" && !!drawnCard;
+const shouldHighlightPileChoice = canDrawFromPile || canDrawFromDiscardPile;
+const shouldHighlightDiscardPileAsAction = shouldHighlightPileChoice || canDiscardDrawnCard;
+const shouldHighlightOwnCardsForTurnSwap = canSwapDrawnCardWithHand;
 const hideOpponentCardsInitialPeek = gameStatus === "initial_peek" || isPeekPhase;
+const visibleDiscardPileCard =
+    isDiscardPileSelectedForTurnAction && drawnCard ? drawnCard : discardTopCard;
+const canDragSelectedTurnCard =
+    (isDrawPileSelectedForTurnAction && (canSwapDrawnCardWithHand || canDiscardDrawnCard)) ||
+    (isDiscardPileSelectedForTurnAction && canSwapDrawnCardWithHand);
+const drawPileCardInteractive = canDrawFromPile || (isDrawPileSelectedForTurnAction && canDragSelectedTurnCard);
+const discardPileCardInteractive =
+    canDrawFromDiscardPile ||
+    canDiscardDrawnCard ||
+    (isDiscardPileSelectedForTurnAction && canDragSelectedTurnCard);
+const selectedPileCardStyle: React.CSSProperties = {
+    outline: "3px solid #ffb14a",
+    outlineOffset: "2px",
+    boxShadow:
+        "0 0 0 2px rgba(255, 177, 74, 0.45), 0 0 16px rgba(255, 177, 74, 0.75), 0 0 30px rgba(255, 177, 74, 0.45)",
+    animation: "gameSelectedPilePulse 1.25s ease-in-out infinite",
+    filter: "saturate(1.08) brightness(1.04)",
+    opacity: 1,
+};
 
 // Implement logic to highlight valid cards (own cards for 7-8, opponent cards for 9-12) and capture the user's click.
 //  #28
@@ -718,6 +794,22 @@ const [abilitySelectedOwnCardIndex, setAbilitySelectedOwnCardIndex] = useState<n
 const [abilitySelectedOpponentId, setAbilitySelectedOpponentId] = useState<number | null>(null);
 const [abilitySelectedOpponentCardIndex, setAbilitySelectedOpponentCardIndex] = useState<number | null>(null);
 const [isSubmittingAbility, setIsSubmittingAbility] = useState<boolean>(false);
+const [isAbilityChoicePending, setIsAbilityChoicePending] = useState<boolean>(false);
+const seenAbilityPhaseRef = useRef<string>("");
+const canShowAbilityChoiceButtons = isAbilityPending && isMyTurn && isAbilityChoicePending;
+const abilityPhaseLabel = gameStatus === "ability_peek_self"
+    ? "PEEK"
+    : gameStatus === "ability_peek_opponent"
+        ? "SPY"
+        : gameStatus === "ability_swap"
+            ? "SWAP"
+            : "Ability";
+const canInteractWithAbilityTargets =
+    isAbilityPending &&
+    isMyTurn &&
+    !isSubmittingAbility &&
+    !isAbilityChoicePending &&
+    !isSkippingAbilityChoice;
 
 // reset the ability selection when the phase ends
 const resetAbilitySelection = () => {
@@ -727,16 +819,25 @@ const resetAbilitySelection = () => {
     setIsSubmittingAbility(false);
 };
 
-// #28: reset the ability selection when the game status changed
+// #28: reset ability state when phase changes and require explicit use/skip choice
 useEffect(() => {
     if (!isAbilityPending) {
+        seenAbilityPhaseRef.current = "";
+        setIsAbilityChoicePending(false);
+        setIsSkippingAbilityChoice(false);
         resetAbilitySelection();
+        return;
     }
-}, [isAbilityPending]);
+
+    if (isMyTurn && seenAbilityPhaseRef.current !== gameStatus) {
+        seenAbilityPhaseRef.current = gameStatus;
+        setIsAbilityChoicePending(true);
+    }
+}, [isAbilityPending, isMyTurn, gameStatus]);
 
 // #28: handle own card click during ability phase
 const handleAbilityOwnCardClick = (cardIndex: number) => {
-    if (!isMyTurn || !gameId || !token || isSubmittingAbility) return;
+    if (!canInteractWithAbilityTargets || !gameId || !token) return;
 
     if (gameStatus === "ability_peek_self") {
         // 7/8: peek own card → POST immediately
@@ -772,7 +873,7 @@ const handleAbilityOwnCardClick = (cardIndex: number) => {
 
 // #28: handle opponent card click during ability phase
 const handleAbilityOpponentCardClick = (opponentId: number, cardIndex: number) => {
-    if (!isMyTurn || !gameId || !token || isSubmittingAbility) return;
+    if (!canInteractWithAbilityTargets || !gameId || !token) return;
 
     if (gameStatus === "ability_peek_opponent") {
         // 9/10: peek opponent card, POST immediately
@@ -813,10 +914,384 @@ const handleAbilityOpponentCardClick = (opponentId: number, cardIndex: number) =
     }
 };
 
+const refreshOwnHand = async (activeGameId: string, authToken: string) => {
+    const hand = await apiService.getWithAuth<Card[]>(
+        `/games/${activeGameId}/my-hand`,
+        authToken
+    );
+    setMyHand(hand);
+};
+
+const refreshDiscardPileTop = async (activeGameId: string) => {
+    try {
+        const topCard = await apiService.get<Card | null>(
+            `/games/${activeGameId}/discard-pile/top`
+        );
+        setDiscardTopCard(topCard ?? null);
+    } catch (error) {
+        console.error("Failed to refresh discard pile top card:", error);
+    }
+};
+
+const swapDrawnCardWithHand = (targetCardIndex: number) => {
+    if (!canSwapDrawnCardWithHand || !gameId || !token) {
+        return;
+    }
+
+    setIsSwappingDrawnCard(true);
+    void apiService.postWithAuth(
+        `/games/${gameId}/drawn-card/swap`,
+        { targetCardIndex },
+        token
+    ).then(async () => {
+        setDrawnCard(null);
+        setSelectedDrawSource(null);
+        setHasChosenDrawSourceThisTurn(false);
+        await Promise.all([
+            refreshOwnHand(gameId, token),
+            refreshDiscardPileTop(gameId),
+        ]);
+    }).catch((error) => {
+        console.error("Failed to swap drawn card:", error);
+    }).finally(() => {
+        setIsSwappingDrawnCard(false);
+    });
+};
+
+// temp implementation until backend is properly implemented (endpoint missing)
+const tryDiscardDrawnCard = async (activeGameId: string, authToken: string) => {
+    const endpoints = [
+        `/games/${activeGameId}/drawn-card/discard`,
+        `/games/${activeGameId}/moves/discard`,
+    ];
+
+    let unsupportedError: unknown = null;
+    for (const endpoint of endpoints) {
+        try {
+            await apiService.postWithAuth(endpoint, {}, authToken);
+            return;
+        } catch (error) {
+            const status = (error as Partial<ApplicationError>)?.status;
+            if (status === 404 || status === 405) {
+                unsupportedError = error;
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    throw unsupportedError ?? new Error("No supported endpoint for discarding drawn card.");
+};
+
+const discardDrawnCard = () => {
+    if (!canDiscardDrawnCard || !gameId || !token || !drawnCard) {
+        return;
+    }
+
+    setIsDiscardingDrawnCard(true);
+    void tryDiscardDrawnCard(gameId, token).then(async () => {
+        setDrawnCard(null);
+        setSelectedDrawSource(null);
+        setHasChosenDrawSourceThisTurn(false);
+        await refreshDiscardPileTop(gameId);
+    }).catch((error) => {
+        console.error("Failed to discard drawn card:", error);
+    }).finally(() => {
+        setIsDiscardingDrawnCard(false);
+    });
+};
+
+const drawFromPile = () => {
+    if (!canDrawFromPile || !gameId || !token || drawRequestInFlightRef.current) {
+        return;
+    }
+
+    drawRequestInFlightRef.current = true;
+    setIsDrawingFromPile(true);
+    setSelectedDrawSource("draw_pile");
+    setHasChosenDrawSourceThisTurn(true);
+    void apiService.postWithAuth(
+        `/games/${gameId}/moves/draw`,
+        {},
+        token
+    ).then(() => {
+        return apiService.getWithAuth<unknown>(
+            `/games/${gameId}/drawn-card`,
+            token
+        );
+    }).then((rawCard) => {
+        const nextDrawnCard = toValidCardOrNull(rawCard);
+        setDrawnCard(nextDrawnCard);
+        if (!nextDrawnCard) {
+            setSelectedDrawSource(null);
+            setHasChosenDrawSourceThisTurn(false);
+        }
+    }).catch((error) => {
+        console.error("Failed to draw from pile:", error);
+        setSelectedDrawSource(null);
+        setHasChosenDrawSourceThisTurn(false);
+    }).finally(() => {
+        setIsDrawingFromPile(false);
+        drawRequestInFlightRef.current = false;
+    });
+};
+
+const drawFromDiscardPile = () => {
+    if (!canDrawFromDiscardPile || !gameId || !token || drawRequestInFlightRef.current) {
+        return;
+    }
+
+    drawRequestInFlightRef.current = true;
+    setIsDrawingFromDiscardPile(true);
+    setSelectedDrawSource("discard_pile");
+    setHasChosenDrawSourceThisTurn(true);
+    void apiService.postWithAuth(
+        `/games/${gameId}/discard-pile/draw`,
+        {},
+        token
+    ).then(async () => {
+        const [rawDrawnCard] = await Promise.all([
+            apiService.getWithAuth<unknown>(
+                `/games/${gameId}/drawn-card`,
+                token
+            ),
+            refreshDiscardPileTop(gameId),
+            refreshOwnHand(gameId, token),
+        ]);
+        const nextDrawnCard = toValidCardOrNull(rawDrawnCard);
+        setDrawnCard(nextDrawnCard);
+        if (!nextDrawnCard) {
+            setSelectedDrawSource(null);
+            setHasChosenDrawSourceThisTurn(false);
+        }
+    }).catch((error) => {
+        console.error("Failed to draw from discard pile:", error);
+        setSelectedDrawSource(null);
+        setHasChosenDrawSourceThisTurn(false);
+    }).finally(() => {
+        setIsDrawingFromDiscardPile(false);
+        drawRequestInFlightRef.current = false;
+    });
+};
+
+const eventHasTurnCardDrag = (event: React.DragEvent<HTMLDivElement>) =>
+    isDraggingTurnCard || Array.from(event.dataTransfer.types).includes(TURN_CARD_DRAG_MIME);
+
+const handleTurnCardDragStart = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!canDragSelectedTurnCard) {
+        event.preventDefault();
+        return;
+    }
+
+    setIsDraggingTurnCard(true);
+    setDragOverOwnCardIndex(null);
+    setIsDragOverDiscardPile(false);
+    event.dataTransfer.setData(TURN_CARD_DRAG_MIME, "turn-card");
+    event.dataTransfer.effectAllowed = "move";
+};
+
+const handleTurnCardDragEnd = () => {
+    setIsDraggingTurnCard(false);
+    setDragOverOwnCardIndex(null);
+    setIsDragOverDiscardPile(false);
+};
+
+const handleOwnCardDragOver = (event: React.DragEvent<HTMLDivElement>, ownCardIndex: number) => {
+    if (!canSwapDrawnCardWithHand || !eventHasTurnCardDrag(event)) {
+        return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (isDragOverDiscardPile) {
+        setIsDragOverDiscardPile(false);
+    }
+    if (dragOverOwnCardIndex !== ownCardIndex) {
+        setDragOverOwnCardIndex(ownCardIndex);
+    }
+};
+
+const handleOwnCardDragLeave = (ownCardIndex: number) => {
+    if (dragOverOwnCardIndex === ownCardIndex) {
+        setDragOverOwnCardIndex(null);
+    }
+};
+
+const handleOwnCardDrop = (event: React.DragEvent<HTMLDivElement>, ownCardIndex: number) => {
+    if (!canSwapDrawnCardWithHand || !eventHasTurnCardDrag(event)) {
+        return;
+    }
+
+    event.preventDefault();
+    setIsDraggingTurnCard(false);
+    setDragOverOwnCardIndex(null);
+    setIsDragOverDiscardPile(false);
+    swapDrawnCardWithHand(ownCardIndex);
+};
+
+const handleDiscardPileDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!canDiscardDrawnCard || !eventHasTurnCardDrag(event)) {
+        return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dragOverOwnCardIndex != null) {
+        setDragOverOwnCardIndex(null);
+    }
+    if (!isDragOverDiscardPile) {
+        setIsDragOverDiscardPile(true);
+    }
+};
+
+const handleDiscardPileDragLeave = () => {
+    if (isDragOverDiscardPile) {
+        setIsDragOverDiscardPile(false);
+    }
+};
+
+const handleDiscardPileDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!canDiscardDrawnCard || !eventHasTurnCardDrag(event)) {
+        return;
+    }
+
+    event.preventDefault();
+    setIsDraggingTurnCard(false);
+    setDragOverOwnCardIndex(null);
+    setIsDragOverDiscardPile(false);
+    discardDrawnCard();
+};
+
+// temp until Abilities implemented
+const trySkipAbility = async (activeGameId: string, authToken: string) => {
+    const endpoints = [
+        `/games/${activeGameId}/abilities/skip`,
+        `/games/${activeGameId}/ability/skip`,
+        `/games/${activeGameId}/moves/skip-ability`,
+        `/games/${activeGameId}/moves/ability/skip`,
+    ];
+
+    const delay = (milliseconds: number) =>
+        new Promise<void>((resolve) => {
+            setTimeout(resolve, milliseconds);
+        });
+
+    const maxAttempts = 4;
+    let unsupportedError: unknown = null;
+
+    for (const endpoint of endpoints) {
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            try {
+                await apiService.postWithAuth(endpoint, {}, authToken);
+                return;
+            } catch (error) {
+                const status = (error as Partial<ApplicationError>)?.status;
+                if (status === 404 || status === 405) {
+                    unsupportedError = error;
+                    break;
+                }
+                if ((status === 400 || status === 409 || status === 423) && attempt < maxAttempts - 1) {
+                    await delay(200);
+                    continue;
+                }
+                throw error;
+            }
+        }
+    }
+
+    throw unsupportedError ?? new Error("No supported endpoint for skipping ability.");
+};
+
+const chooseUseAbility = () => {
+    if (!canShowAbilityChoiceButtons) {
+        return;
+    }
+    setIsAbilityChoicePending(false);
+};
+
+const skipAbilityChoice = () => {
+    if (!canShowAbilityChoiceButtons || !gameId || !token) {
+        return;
+    }
+
+    setIsSkippingAbilityChoice(true);
+    void trySkipAbility(gameId, token).catch((error) => {
+        console.error("Failed to skip ability:", error);
+    }).finally(() => {
+        setIsSkippingAbilityChoice(false);
+    });
+};
+
+useEffect(() => {
+    if (!drawnCard && !isDrawingFromPile && !isDrawingFromDiscardPile) {
+        setSelectedDrawSource(null);
+        setHasChosenDrawSourceThisTurn(false);
+    }
+}, [drawnCard, isDrawingFromPile, isDrawingFromDiscardPile]);
+
+useEffect(() => {
+    if (!canDragSelectedTurnCard) {
+        setIsDraggingTurnCard(false);
+        setDragOverOwnCardIndex(null);
+        setIsDragOverDiscardPile(false);
+    }
+}, [canDragSelectedTurnCard]);
+
+const centerTurnActionLabel = useMemo(() => {
+    if (!showCenterTurnCountdown) {
+        return "";
+    }
+
+    const suffix = `(${turnTimeLeft}s)`;
+    if (isDrawingFromPile || isDrawingFromDiscardPile) {
+        return `Preparing action ${suffix}`;
+    }
+
+    if (isAbilityPending) {
+        if (isAbilityChoicePending) {
+            return `${abilityPhaseLabel}: Use Ability or Skip ${suffix}`;
+        }
+        if (gameStatus === "ability_peek_self") {
+            return `PEEK: choose one own card ${suffix}`;
+        }
+        if (gameStatus === "ability_peek_opponent") {
+            return `SPY: choose one opponent card ${suffix}`;
+        }
+        if (gameStatus === "ability_swap") {
+            if (abilitySelectedOwnCardIndex == null) {
+                return `SWAP: choose your card ${suffix}`;
+            }
+            return `SWAP: choose opponent card ${suffix}`;
+        }
+    }
+
+    if (canSwapDrawnCardWithHand && selectedDrawSource === "draw_pile") {
+        return `Swap with hand or discard ${suffix}`;
+    }
+
+    if (canSwapDrawnCardWithHand && selectedDrawSource === "discard_pile") {
+        return `Swap with your hand ${suffix}`;
+    }
+
+    return `Draw from Draw Pile or Discard Pile ${suffix}`;
+}, [
+    showCenterTurnCountdown,
+    turnTimeLeft,
+    isDrawingFromPile,
+    isDrawingFromDiscardPile,
+    isAbilityPending,
+    isAbilityChoicePending,
+    abilityPhaseLabel,
+    gameStatus,
+    abilitySelectedOwnCardIndex,
+    canSwapDrawnCardWithHand,
+    selectedDrawSource,
+]);
+
 const playerListRows = tablePlayerIds.map((id) => {
           const fallbackLabel = selfUserId != null && id === selfUserId ? "You" : `Player ${id}`;
           const label = playerNamesById[id] ?? fallbackLabel;
-          const isActive = currentTurnUserId != null && currentTurnUserId === id;
+          const isActive = !isPeekPhase && currentTurnUserId != null && currentTurnUserId === id;
           return {
               id,
               label,
@@ -844,7 +1319,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                   {isPeekPhase && (
                       <div className="peek-phase-overlay" aria-hidden="true">
                           <div className="peek-phase-indicator">
-                              Memorize your cards!
+                              Memorize 2 cards!
                           </div>
                       </div>
                   )}
@@ -852,25 +1327,8 @@ const playerListRows = tablePlayerIds.map((id) => {
                   {/* #17: PeekTimer overlay */}
                   {isPeekPhase && (
                       <PeekTimer
-                        duration={5}
-                        onComplete={() => {
-                            setIsPeekPhase(false);
-                            // #15: all cards shown go back to face-down when timer goes to 0
-                            resetPeekSelection();
-                            // refresh hand - all cards should be face-down again
-                                if (gameId && token) {
-                                    void apiService.getWithAuth<Card[]>(
-                                        `/games/${gameId}/my-hand`,
-                                         token
-                                    ).then(hand => setMyHand(hand)).catch(console.error);
-                                }
-                        }}
+                        duration={10}
                       />
-                  )}
-
-                  {/* EXIT BUTTON */}
-                  {isSpectator && (
-                      <Button className="exit-button">Exit</Button>
                   )}
 
                   {/* TOP CENTER */}
@@ -884,18 +1342,18 @@ const playerListRows = tablePlayerIds.map((id) => {
                                  size="small"
                                  // #28: highlight opponent cards during ability phase
                                  onClick={() => {
-                                     if (isAbilityPending && isMyTurn && seatAssignments.topOpponentId != null) {
+                                     if (canInteractWithAbilityTargets && seatAssignments.topOpponentId != null) {
                                          handleAbilityOpponentCardClick(seatAssignments.topOpponentId, index);
                                      }
                                  }}
                                  disabled={
-                                     !(isAbilityPending && isMyTurn && (
+                                     !(canInteractWithAbilityTargets && (
                                          gameStatus === "ability_peek_opponent" ||
                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
-                                     )) || isSubmittingAbility
+                                     ))
                                  }
                                  style={
-                                     isMyTurn && isAbilityPending && (
+                                     canInteractWithAbilityTargets && (
                                          gameStatus === "ability_peek_opponent" ||
                                          (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
                                      ) ? {
@@ -919,18 +1377,18 @@ const playerListRows = tablePlayerIds.map((id) => {
                                   size="small"
                                   // #28: highlight opponent cards during ability phase
                                   onClick={() => {
-                                      if (isAbilityPending && isMyTurn && seatAssignments.leftOpponentId != null) {
+                                      if (canInteractWithAbilityTargets && seatAssignments.leftOpponentId != null) {
                                           handleAbilityOpponentCardClick(seatAssignments.leftOpponentId, index);
                                       }
                                   }}
                                   disabled={
-                                      !(isAbilityPending && isMyTurn && (
+                                      !(canInteractWithAbilityTargets && (
                                           gameStatus === "ability_peek_opponent" ||
                                           (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
-                                      )) || isSubmittingAbility
+                                      ))
                                   }
                                   style={
-                                      isMyTurn && isAbilityPending && (
+                                      canInteractWithAbilityTargets && (
                                           gameStatus === "ability_peek_opponent" ||
                                           (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
                                       ) ? {
@@ -954,18 +1412,18 @@ const playerListRows = tablePlayerIds.map((id) => {
                                   size="small"
                                   // #28: highlight opponent cards during ability phase
                                   onClick={() => {
-                                      if (isAbilityPending && isMyTurn && seatAssignments.rightOpponentId != null) {
+                                      if (canInteractWithAbilityTargets && seatAssignments.rightOpponentId != null) {
                                           handleAbilityOpponentCardClick(seatAssignments.rightOpponentId, index);
                                       }
                                   }}
                                   disabled={
-                                      !(isAbilityPending && isMyTurn && (
+                                      !(canInteractWithAbilityTargets && (
                                           gameStatus === "ability_peek_opponent" ||
                                           (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
-                                      )) || isSubmittingAbility
+                                      ))
                                   }
                                   style={
-                                      isMyTurn && isAbilityPending && (
+                                      canInteractWithAbilityTargets && (
                                           gameStatus === "ability_peek_opponent" ||
                                           (gameStatus === "ability_swap" && abilitySelectedOwnCardIndex !== null)
                                       ) ? {
@@ -980,106 +1438,60 @@ const playerListRows = tablePlayerIds.map((id) => {
 
                   {/* CENTER */}
                   <div className="center-area">
-                      {/* Draw Pile is always face down and only clickable if its the users turn currently */}
-                          <div className="pile">
-                              <CardComponent
-                                    hidden={true}
-                                    size="medium"
-                                    onClick={() => {
-                                        if (!canDrawFromPile || !gameId || !token || drawRequestInFlightRef.current) {
-                                            return;
-                                        }
-
-                                        drawRequestInFlightRef.current = true;
-                                        setIsDrawingFromPile(true);
-
-                                        void apiService.postWithAuth(
-                                            `/games/${gameId}/moves/draw`,
-                                            {},
-                                            token
-                                        ).then(() => {
-                                            // refresh drawn card after drawing
-                                            return apiService.getWithAuth<unknown>(
-                                                `/games/${gameId}/drawn-card`,
-                                                token
-                                            );
-                                        }).then(rawCard => {
-                                            setDrawnCard(toValidCardOrNull(rawCard));
-                                        }).catch(console.error)
-                                        .finally(() => {
-                                            setIsDrawingFromPile(false);
-                                            drawRequestInFlightRef.current = false;
-                                        });
-                                    }}
-                                    disabled={!canDrawFromPile}
-                              />
-                          <p>Draw Pile</p>
-                          </div>
-
-                          {/* #20: Drawn Card Slot */}
-                              {isMyTurn && (
-                                  <div className="pile">
-                                      {drawnCard ? (
-                                          <CardComponent
-                                              hidden={drawnCard.value == null}
-                                              value={drawnCard.value ?? undefined}
-                                              size="medium"
-                                          />
-                                      ) : (
-                                          <div style={{
-                                              backgroundColor: "rgba(255,255,255,0.1)",
-                                              border: "2px dashed #999",
-                                              borderRadius: "8px",
-                                              width: "80px",
-                                              height: "120px",
-                                              display: "flex",
-                                              alignItems: "center",
-                                              justifyContent: "center",
-                                              color: "#999",
-                                              fontSize: "12px",
-                                          }}>
-                                              Draw a card
-                                          </div>
-                                      )}
-                                      <p>Drawn Card</p>
-                                  </div>
-                              )}
-
-                      {/* Discard Pile the top card is always faceup */}
                       <div className="pile">
                           <CardComponent
-                                  hidden={false}
-                                  value={discardTopCard?.value}
-                                  size="medium"
-                                  onClick={() =>{
-                                      // #25: only clickable if its my turn, no drawn card yet, and discard pile not empty
-                                       if (!isMyTurn || !gameId || !token || drawnCard || !discardTopCard) {
-                                           return;
-                                       }
-                                       void apiService.postWithAuth(
-                                           `/games/${gameId}/discard-pile/draw`,
-                                           {},
-                                           token
-                                       ).then(() => {
-                                            setDrawnCard(discardTopCard);
-                                            setDiscardTopCard(null);
-                                            // Ensure the card taken from the pile visually flips to "Face Down" once it enters the player's hand.
-                                            // #23
-                                            return apiService.getWithAuth<Card[]>(
-                                                `/games/${gameId}/my-hand`,
-                                                token
-                                            );
-                                       }).then((hand) => {
-                                           setMyHand(hand); // Hand is updated with face up ca
-                                       }).catch((error) => {
-                                           console.error("Failed to draw from discard pile:", error);
-                                       });
-                                  }}
-                                  disabled={!isMyTurn || !!drawnCard || !discardTopCard}
-                              />
-                              <p>Discard Pile</p>
-                          </div>
+                              hidden={!showDrawPileAsRevealedCard}
+                              value={showDrawPileAsRevealedCard ? drawnCard?.value : undefined}
+                              size="medium"
+                              onClick={drawFromPile}
+                              draggable={isDrawPileSelectedForTurnAction && canDragSelectedTurnCard}
+                              onDragStart={handleTurnCardDragStart}
+                              onDragEnd={handleTurnCardDragEnd}
+                              disabled={!drawPileCardInteractive}
+                              style={isDrawPileSelectedForTurnAction ? selectedPileCardStyle : shouldHighlightPileChoice ? {
+                                  outline: "3px solid #34e27a",
+                                  outlineOffset: "2px",
+                                  boxShadow: "0 0 0 2px rgba(52, 226, 122, 0.3)",
+                              } : undefined}
+                          />
+                          <p>Draw Pile</p>
                       </div>
+
+                      <div className="pile">
+                          <CardComponent
+                              hidden={false}
+                              value={visibleDiscardPileCard?.value}
+                              size="medium"
+                              onClick={() => {
+                                  if (canDiscardDrawnCard) {
+                                      discardDrawnCard();
+                                      return;
+                                  }
+                                  if (canDrawFromDiscardPile) {
+                                      drawFromDiscardPile();
+                                  }
+                              }}
+                              draggable={isDiscardPileSelectedForTurnAction && canDragSelectedTurnCard}
+                              onDragStart={handleTurnCardDragStart}
+                              onDragEnd={handleTurnCardDragEnd}
+                              onDragOver={handleDiscardPileDragOver}
+                              onDragEnter={handleDiscardPileDragOver}
+                              onDragLeave={handleDiscardPileDragLeave}
+                              onDrop={handleDiscardPileDrop}
+                              disabled={!discardPileCardInteractive}
+                              style={isDiscardPileSelectedForTurnAction ? selectedPileCardStyle : isDragOverDiscardPile ? {
+                                  outline: "3px dashed #ffb14a",
+                                  outlineOffset: "2px",
+                                  boxShadow: "0 0 0 2px rgba(255, 177, 74, 0.45), 0 0 18px rgba(255, 177, 74, 0.78)",
+                              } : shouldHighlightDiscardPileAsAction ? {
+                                  outline: "3px solid #34e27a",
+                                  outlineOffset: "2px",
+                                  boxShadow: "0 0 0 2px rgba(52, 226, 122, 0.3)",
+                              } : undefined}
+                          />
+                          <p>Discard Pile</p>
+                      </div>
+                  </div>
                   {showCenterTurnCountdown && (
                       <div className="game-center-turn-timer">
                           <div className="game-turn-progress-track">
@@ -1090,27 +1502,88 @@ const playerListRows = tablePlayerIds.map((id) => {
                                   }}
                               />
                           </div>
-                          <p className="game-turn-progress-label">{turnTimeLeft}s</p>
+                          <p className="game-turn-progress-label">{centerTurnActionLabel}</p>
                       </div>
                   )}
 
                   {/* Buttons are only active if it is users turn */}
                   <div className="top-right-buttons">
-                      <Button disabled={!isMyTurn}>Scores</Button>
-                      <Button type="primary" disabled={!isMyTurn}>Call Cabo</Button>
+                      <Button disabled={!isMyTurnUi}>Scores</Button>
+                      <Button type="primary" disabled={!isMyTurnUi}>Call Cabo</Button>
+                      {canShowAbilityChoiceButtons && (
+                          <>
+                              <Button
+                                  type="default"
+                                  disabled={isSkippingAbilityChoice || isSubmittingAbility}
+                                  onClick={chooseUseAbility}
+                              >
+                                  {`Use ${abilityPhaseLabel}`}
+                              </Button>
+                              <Button
+                                  type="default"
+                                  disabled={isSkippingAbilityChoice || isSubmittingAbility}
+                                  loading={isSkippingAbilityChoice}
+                                  onClick={skipAbilityChoice}
+                              >
+                                  Skip Ability
+                              </Button>
+                          </>
+                      )}
                   </div>
 
-                  {/* Bottom cards are only clickable when its users turn*/}
-                  <div className={`bottom-cards${isMyTurn ? " game-current-player-highlight" : ""}`}>
+                  {/* Bottom cards are only itneractable when its users turn*/}
+                  <div className={`bottom-cards${isMyTurnUi ? " game-current-player-highlight" : ""}`}>
                       {[...Array(HAND_SIZE)].map((_, i) => {
                           const card = myHand[i];
                           // #28: highlight own cards during ability phase
                           const isHighlightedForAbility =
-                            isMyTurn && (
+                            canInteractWithAbilityTargets && (
                                 gameStatus === "ability_peek_self" ||
                                 gameStatus === "ability_swap"
                             );
+                          const canClickOwnCardForAbility =
+                            isHighlightedForAbility;
+                          const isPeekCardSelected = isPeekPhase && peekVisibleCards[i];
+                          const isPeekCardSelectable =
+                            isPeekPhase &&
+                            !isSubmittingInitialPeek &&
+                            !isPeekCardSelected &&
+                            revealedPeekCount < 2;
                           const isSelectedForSwap = abilitySelectedOwnCardIndex === i;
+                          const isSwapDropTarget =
+                              isDraggingTurnCard &&
+                              canSwapDrawnCardWithHand &&
+                              dragOverOwnCardIndex === i;
+
+                          const cardStyle: React.CSSProperties | undefined = isPeekPhase
+                              ? (isPeekCardSelected ? {
+                                  outline: "3px solid #e8a87c",
+                                  outlineOffset: "2px",
+                                  boxShadow: "0 0 0 2px rgba(232, 168, 124, 0.35)",
+                              } : isPeekCardSelectable ? {
+                                  outline: "3px dashed rgba(52, 226, 122, 0.95)",
+                                  outlineOffset: "2px",
+                                  boxShadow: "0 0 0 2px rgba(52, 226, 122, 0.3)",
+                              } : {
+                                  outline: "2px solid rgba(255, 255, 255, 0.75)",
+                                  outlineOffset: "2px",
+                              })
+                              : isHighlightedForAbility ? {
+                              outline: isSelectedForSwap
+                                  ? "3px solid #e8a87c"   // orange = selected for swap
+                                  : "3px solid #a8b87a",  // green = clickable
+                              outlineOffset: "2px",
+                          } : shouldHighlightOwnCardsForTurnSwap ? {
+                              outline: "3px solid #34e27a",
+                              outlineOffset: "2px",
+                              boxShadow: "0 0 0 2px rgba(52, 226, 122, 0.25)",
+                          } : undefined;
+                          const finalCardStyle: React.CSSProperties | undefined = isSwapDropTarget ? {
+                              ...(cardStyle ?? {}),
+                              outline: "3px dashed #ffb14a",
+                              outlineOffset: "2px",
+                              boxShadow: "0 0 0 2px rgba(255, 177, 74, 0.48), 0 0 14px rgba(255, 177, 74, 0.72)",
+                          } : cardStyle;
 
                           return (
                               <CardComponent
@@ -1124,39 +1597,24 @@ const playerListRows = tablePlayerIds.map((id) => {
                                         return;
                                     }
 
-                                    if (!canSwapDrawnCardWithHand || !gameId || !token) {
+                                    if (canClickOwnCardForAbility) {
+                                        handleAbilityOwnCardClick(i);
                                         return;
                                     }
 
-                                    setIsSwappingDrawnCard(true);
-                                    void apiService.postWithAuth(
-                                        `/games/${gameId}/drawn-card/swap`,
-                                        { targetCardIndex: i },
-                                        token
-                                    ).then(() => {
-                                        setDrawnCard(null);
-                                        return apiService.getWithAuth<Card[]>(
-                                            `/games/${gameId}/my-hand`,
-                                            token
-                                        );
-                                    }).then((hand) => {
-                                        setMyHand(hand);
-                                    }).catch((error) => {
-                                        console.error("Failed to swap drawn card:", error);
-                                    }).finally(() => {
-                                        setIsSwappingDrawnCard(false);
-                                    });
+                                    if (canSwapDrawnCardWithHand) {
+                                        swapDrawnCardWithHand(i);
+                                        return;
+                                    }
                                 }}
                                 disabled={isPeekPhase
-                                    ? (isSubmittingInitialPeek || (!peekVisibleCards[i] && revealedPeekCount >= 2))
-                                    : !canSwapDrawnCardWithHand}
-                                // #28: visual highlight
-                                style={isHighlightedForAbility ? {
-                                    outline: isSelectedForSwap
-                                        ? "3px solid #e8a87c"   // orange = selected for swap
-                                        : "3px solid #a8b87a",  // green = clickable
-                                    outlineOffset: "2px",
-                                } : undefined}
+                                    ? (isSubmittingInitialPeek || isPeekCardSelected || (!isPeekCardSelected && revealedPeekCount >= 2))
+                                    : !(canClickOwnCardForAbility || canSwapDrawnCardWithHand)}
+                                onDragOver={(event) => handleOwnCardDragOver(event, i)}
+                                onDragEnter={(event) => handleOwnCardDragOver(event, i)}
+                                onDragLeave={() => handleOwnCardDragLeave(i)}
+                                onDrop={(event) => handleOwnCardDrop(event, i)}
+                                style={finalCardStyle}
                               />
                           );
                       })}

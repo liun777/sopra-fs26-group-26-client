@@ -7,15 +7,15 @@ interface CardProps {
   onClick?: () => void;
   disabled?: boolean;
   style?: React.CSSProperties;
+  draggable?: boolean;
+  onDragStart?: React.DragEventHandler<HTMLDivElement>;
+  onDragEnd?: React.DragEventHandler<HTMLDivElement>;
+  onDragOver?: React.DragEventHandler<HTMLDivElement>;
+  onDrop?: React.DragEventHandler<HTMLDivElement>;
+  onDragEnter?: React.DragEventHandler<HTMLDivElement>;
+  onDragLeave?: React.DragEventHandler<HTMLDivElement>;
 }
 
-// Card abilities
-const getAbility = (value: number): string => {
-  if (value === 7 || value === 8) return "PEEK";   // peek your own card
-  if (value === 9 || value === 10) return "SPY";   // spy on an opponent card
-  if (value === 11 || value === 12) return "SWAP"; // swap cards w someone else
-  return "none";
-};
 // get the correct oath of the png's
 const getCardImagePath = (value: number): string => {
   return `/card${value}.png`;
@@ -28,6 +28,13 @@ const CardComponent: React.FC<CardProps> = ({
   onClick,
   disabled = false,
   style,
+  draggable = false,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+  onDragEnter,
+  onDragLeave,
 }) => {
   const handleClick = () => {
     if (!disabled && onClick) {
@@ -35,7 +42,7 @@ const CardComponent: React.FC<CardProps> = ({
     }
   };
 
-  const cursorStyle = disabled ? "not-allowed" : onClick ? "pointer" : "default";
+  const cursorStyle = disabled ? "not-allowed" : draggable ? "grab" : onClick ? "pointer" : "default";
   const opacityStyle = disabled ? 0.6 : 1;
 
 
@@ -46,6 +53,13 @@ const CardComponent: React.FC<CardProps> = ({
       <div
         className={`card ${size}`}
         onClick={handleClick}
+        draggable={!disabled && draggable}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
         style={{
           cursor: cursorStyle,
           opacity: opacityStyle,
@@ -57,12 +71,18 @@ const CardComponent: React.FC<CardProps> = ({
 
   // card front — shows the correct picture
   const imagePath = value !== undefined ? getCardImagePath(value) : null;
-  const ability = value !== undefined ? getAbility(value) : "none";
 
   return (
     <div
           className={`card ${size}`}
           onClick={handleClick}
+          draggable={!disabled && draggable}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+          onDragEnter={onDragEnter}
+          onDragLeave={onDragLeave}
           style={{
             cursor: cursorStyle,
             opacity: opacityStyle,
@@ -86,25 +106,6 @@ const CardComponent: React.FC<CardProps> = ({
               color: "#333",
             }}>
               {value ?? "?"}
-            </span>
-          )}
-
-          {/* Ability Badge */}
-          {ability !== "none" && (
-            <span style={{
-              position: "absolute",
-              bottom: "4px",
-              fontSize: "9px",
-              fontWeight: "bold",
-              color: "white",
-              backgroundColor:
-                ability === "PEEK" ? "rgba(76, 175, 80, 0.85)" :
-                ability === "SPY" ? "rgba(33, 150, 243, 0.85)" :
-                "rgba(156, 39, 176, 0.85)",
-              padding: "2px 4px",
-              borderRadius: "4px",
-            }}>
-              {ability}
             </span>
           )}
         </div>

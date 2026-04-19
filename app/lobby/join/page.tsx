@@ -130,36 +130,38 @@ const openLobbyColumns: TableProps<OpenLobbyRow>["columns"] = [
         title: "Host",
         dataIndex: "hostLabel",
         key: "hostLabel",
-        width: 170,
+        ellipsis: true,
         render: (value: string, row) => (
-            <span>{row.isEmptyState ? "" : value}</span>
+            <span className="table-ellipsis-text" title={row.isEmptyState ? "" : value}>
+                {row.isEmptyState ? "" : value}
+            </span>
         ),
     },
     {
         title: "Lobby Code",
         dataIndex: "sessionId",
         key: "sessionId",
-        width: 180,
+        ellipsis: true,
         render: (value: string, row) => (
-            <span>{row.isEmptyState ? "" : value}</span>
+            <span className="table-ellipsis-text" title={row.isEmptyState ? "" : value}>
+                {row.isEmptyState ? "" : value}
+            </span>
         ),
     },
     {
         title: "Players",
         dataIndex: "currentPlayers",
         key: "currentPlayers",
-        width: 90,
         align: "right",
         render: (value: number, row) => (row.isEmptyState ? "0/0" : `${value}/4`),
     },
     {
         title: "Status",
         key: "status",
-        width: 130,
         align: "right",
         render: (_, row) =>
             row.isEmptyState ? (
-                <span>No Open Lobbies</span>
+                <span className="table-ellipsis-text" title="No Open Lobbies">No Open Lobbies</span>
             ) : (
                 <span
                     className={`users-status-pill ${row.canJoin ? "users-status-online" : "users-status-offline"}`}
@@ -401,7 +403,7 @@ const LobbyJoin = () => {
                         className="dashboard-container"
                     >
                         <Table<OpenLobbyRow>
-                            className="users-overview-table"
+                            className="users-overview-table responsive-list-table open-lobbies-table"
                             loading={loadingOpenLobbies}
                             columns={openLobbyColumns}
                             dataSource={openLobbies}
@@ -412,6 +414,7 @@ const LobbyJoin = () => {
                                 pageSize: OPEN_LOBBIES_PAGE_SIZE,
                                 showSizeChanger: false,
                                 hideOnSinglePage: false,
+                                responsive: true,
                                 position: ["bottomCenter"],
                             }}
                             rowSelection={{

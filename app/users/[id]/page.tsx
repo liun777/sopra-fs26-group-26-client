@@ -270,7 +270,7 @@ const resultsColumns: TableProps<ProfileResultRow>["columns"] = [
     title: "Date Played",
     dataIndex: "playedAtText",
     key: "playedAtText",
-    width: 215,
+    ellipsis: true,
     sorter: (a, b) => a.playedAtSort - b.playedAtSort,
     render: (value: string, row) => (row.isEmptyState ? "-" : value),
   },
@@ -278,9 +278,9 @@ const resultsColumns: TableProps<ProfileResultRow>["columns"] = [
     title: "Lobby Code",
     dataIndex: "lobbyCode",
     key: "lobbyCode",
-    width: 155,
+    ellipsis: true,
     render: (value: string, row) => (
-      <span className="users-username-cell" title={row.isEmptyState ? "" : value}>
+      <span className="table-ellipsis-text" title={row.isEmptyState ? "" : value}>
         {row.isEmptyState ? "-" : value}
       </span>
     ),
@@ -289,7 +289,6 @@ const resultsColumns: TableProps<ProfileResultRow>["columns"] = [
     title: "Rounds",
     dataIndex: "roundsText",
     key: "roundsText",
-    width: 108,
     align: "center",
     sorter: (a, b) => (a.roundsSort ?? -1) - (b.roundsSort ?? -1),
     render: (value: string, row) => (row.isEmptyState ? "-" : value),
@@ -298,7 +297,6 @@ const resultsColumns: TableProps<ProfileResultRow>["columns"] = [
     title: "Score",
     dataIndex: "scoreText",
     key: "scoreText",
-    width: 90,
     align: "center",
     sorter: (a, b) => (a.scoreSort ?? -1) - (b.scoreSort ?? -1),
     render: (value: string, row) => (row.isEmptyState ? "-" : value),
@@ -308,6 +306,7 @@ const resultsColumns: TableProps<ProfileResultRow>["columns"] = [
     dataIndex: "winnerName",
     key: "winnerName",
     align: "right",
+    ellipsis: true,
     render: (value: string, row) => {
       if (row.isEmptyState) {
         return <span className="profile-results-empty-text">{NO_RESULTS_TEXT}</span>;
@@ -595,7 +594,7 @@ const UserProfilePage: React.FC = () => {
             }
           > 
             <Table<ProfileResultRow>
-              className="users-overview-table profile-results-table"
+              className="users-overview-table profile-results-table responsive-list-table"
               columns={resultsColumns}
               dataSource={resultsRows}
               rowKey="key"
@@ -606,6 +605,7 @@ const UserProfilePage: React.FC = () => {
                 pageSize: RESULTS_PAGE_SIZE,
                 showSizeChanger: false,
                 hideOnSinglePage: false,
+                responsive: true,
                 position: ["bottomCenter"],
               }}
               rowClassName={() => "profile-results-row"}

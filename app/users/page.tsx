@@ -29,6 +29,7 @@ const columns: TableProps<UserRow>["columns"] = [
     dataIndex: "username",
     key: "username",
     align: "left",
+    ellipsis: true,
     sorter: (a, b) =>
       String(a.username ?? a.name ?? "").localeCompare(
         String(b.username ?? b.name ?? ""),
@@ -252,7 +253,7 @@ const UsersPage: React.FC = () => {
                   </Button>
                 </div>
                 <Table<UserRow>
-                  className="users-overview-table"
+                  className="users-overview-table responsive-list-table"
                   columns={columns}
                   dataSource={filteredUsers}
                   rowKey="key"
