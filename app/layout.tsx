@@ -4,6 +4,7 @@ import { App as AntdApp, ConfigProvider, theme } from "antd";
 import { AntdRegistry } from "@ant-design/nextjs-registry";
 import CaboInviteNotifications from "./CaboInviteNotifications";
 import "@/styles/globals.css";
+import DisconnectHandler from "./components/DisconnectHandler";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -63,6 +64,7 @@ export default function RootLayout({
         >
           <AntdRegistry>
             <AntdApp>
+              <DisconnectHandler />
               <CaboInviteNotifications />
               {children}
             </AntdApp>
