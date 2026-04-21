@@ -898,7 +898,19 @@ function WaitingLobbyContent() {
                         okButtonProps={{ danger: true, type: "primary" }}
                         cancelButtonProps={{ type: "default" }}
                         overlayClassName="lobby-kick-confirm"
-                        onConfirm={() => undefined}
+                        onConfirm={() => {
+                          const authToken = token.trim();
+                          if (!authToken || !sessionId) return;
+                          // find userId of the player to kick by username
+                          const playerToKick = onlineUsers.find(
+                          (u) => normalizeValue(u.username) === normalizeValue(slot.label)
+                          );
+                          if (!playerToKick?.id) return;
+                          void api.deleteWithAuth(
+                          `/lobbies/${encodeURIComponent(sessionId)}/players/${playerToKick.id}`,
+                          authToken,
+                          ).then(() => void loadView());
+                        }}
                       >
                         <Button
                           className="lobby-kick-btn lobby-kick-btn-host"
@@ -1044,7 +1056,15 @@ function WaitingLobbyContent() {
               <Button
                 type="primary"
                 className="lobby-leave-btn"
-                disabled
+                onClick={() => {
+                  const authToken = token.trim();
+                  const uid = userId.trim();
+                  if (!authToken || !uid || !sessionId) return;
+                    void api.deleteWithAuth(
+                    `/lobbies/${encodeURIComponent(sessionId)}/players/${uid}`,
+                    authToken,
+                  ).then(() => router.push("/dashboard"));
+                }}
               >
                 Leave Lobby
               </Button>

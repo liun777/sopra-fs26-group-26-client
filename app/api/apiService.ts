@@ -250,4 +250,24 @@ export class ApiService {
       throw error;
     }
   }
+
+  public async deleteWithAuth<T>(
+      endpoint: string,
+      token: string,
+    ): Promise<T> {
+      const url = `${this.baseURL}${endpoint}`;
+      const res = await fetch(url, {
+          method: "DELETE",
+          headers: this.authHeaders(token),
+      });
+        try {
+          return await this.processResponse<T>(
+              res,
+              "An error occurred while deleting the data.\n",
+          );
+      } catch (error) {
+          this.handleUnauthorized((error as Partial<ApplicationError>)?.status);
+      throw error;
+    }
+  }
 }
