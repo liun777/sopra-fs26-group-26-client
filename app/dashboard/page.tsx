@@ -3,8 +3,8 @@
 // S1: nach erfolgreichem login: Dashboard Screen - wird nach dem Login angezeigt
 // beinhaltet overview des users und seiner daten, möglichkeit zum logout, aber auch inspektion der anderen user sowie auch password change button  (s3)
 
-import React, { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { getStompBrokerUrl } from "@/utils/domain";
@@ -56,8 +56,9 @@ function pickRandomGreeting(slot: GreetingSlot): string {
   return options[Math.floor(Math.random() * options.length)] ?? "Welcome back to Online-CABO!";
 }
 
-const Dashboard = () => {
+function DashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const apiService = useApi();
 
   const [user, setUser] = useState<User | null>(null);
@@ -67,6 +68,14 @@ const Dashboard = () => {
   const { value: token, clear: clearToken } = useLocalStorage<string>("token", "");
   const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
   const normalizedToken = typeof token === "string" ? token.trim() : "";
+
+  useEffect(() => {
+    const kicked = searchParams.get("kicked");
+    if (kicked === "1") {
+      alert("You were removed from the lobby.");
+      router.replace("/dashboard");
+    }
+  }, [router, searchParams]);
 
   // user vom back end holen via get request und speichern, fehlermeldung falls es nicht geht.
   useEffect(() => {
@@ -274,6 +283,14 @@ const Dashboard = () => {
         </div>
       </div>
     </div>
+  );
+}
+
+const Dashboard = () => {
+  return (
+    <Suspense fallback={<div className="cabo-background" />}>
+      <DashboardContent />
+    </Suspense>
   );
 };
 

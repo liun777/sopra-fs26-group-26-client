@@ -325,6 +325,8 @@ const LobbyJoin = () => {
             const message = error instanceof Error ? error.message : "";
             if (status === 404) {
                 alert("Lobby not found. No lobby exists with this code. Please check and try again.");
+            } else if (status === 403) {
+                alert("You were kicked from this lobby. You can only rejoin if the host invites you again.");
             } else if (status === 409) {
                 if (message.includes("Already in lobby")) {
                     router.push(`/lobby/${encodeURIComponent(sessionId.trim())}`);

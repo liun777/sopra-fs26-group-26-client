@@ -212,7 +212,7 @@ export default function GameReconnectPrompt() {
     const gameId = await resolveReconnectGameId();
     if (!gameId) {
       setIsReconnecting(false);
-      alert("Syncing your active game. Please try reconnecting again in a moment.");
+      alert("Resyncing: Please wait until the current player's turn is finished.");
       return;
     }
 

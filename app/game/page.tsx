@@ -50,11 +50,38 @@ type GameStateSignal = {
     currentTurnUserId?: number | string | null;
     currentPlayerId?: number | string | null;
     currentTurnPlayerId?: number | string | null;
+    caboCalled?: boolean | null;
+    turnSeconds?: number | string | null;
+    initialPeekSeconds?: number | string | null;
+    abilityRevealSeconds?: number | string | null;
+    rematchDecisionSeconds?: number | string | null;
+    afkTimeoutSeconds?: number | string | null;
+    lastMoveEvent?: LastMoveEventSignal | null;
     discardPileTop?: {
         value?: number | string | null;
         code?: string | null;
     } | null;
     players?: PlayerHandSignal[] | null;
+};
+
+type MoveZoneSignal = "DRAW_PILE" | "DISCARD_PILE" | "HAND";
+
+type MoveStepSignal = {
+    sourceZone?: MoveZoneSignal | string | null;
+    sourceUserId?: number | string | null;
+    sourceCardIndex?: number | string | null;
+    targetZone?: MoveZoneSignal | string | null;
+    targetUserId?: number | string | null;
+    targetCardIndex?: number | string | null;
+    hidden?: boolean | null;
+    value?: number | string | null;
+};
+
+type LastMoveEventSignal = {
+    sequence?: number | string | null;
+    actorUserId?: number | string | null;
+    primary?: MoveStepSignal | null;
+    secondary?: MoveStepSignal | null;
 };
 
 type FlyingCardAnimation = {
@@ -67,6 +94,29 @@ type FlyingCardAnimation = {
     deltaY: number;
     width: number;
     height: number;
+};
+
+type PendingRemoteDrawAnimation = {
+    source: "draw_pile" | "discard_pile";
+    cardValue?: number;
+};
+
+type ParsedMoveStep = {
+    sourceZone: MoveZoneSignal;
+    sourceUserId: number | null;
+    sourceCardIndex: number | null;
+    targetZone: MoveZoneSignal;
+    targetUserId: number | null;
+    targetCardIndex: number | null;
+    hidden: boolean;
+    value?: number;
+};
+
+type ParsedMoveEvent = {
+    sequence: number;
+    actorUserId: number | null;
+    primary: ParsedMoveStep;
+    secondary: ParsedMoveStep | null;
 };
 
 function normalizeValue(value: unknown): string {
@@ -184,6 +234,16 @@ function normalizeSeatCards(cards: CardViewSignal[] | null | undefined): SeatCar
             };
         })
         .sort((a, b) => a.position - b.position);
+}
+
+function getAfkWarningLeadSeconds(afkTimeoutSeconds: number): number {
+    if (afkTimeoutSeconds <= 300) {
+        return 60;
+    }
+    if (afkTimeoutSeconds <= 600) {
+        return 180;
+    }
+    return 300;
 }
 
 function extractPlayerCardsById(value: unknown): Record<number, SeatCardView[]> {
@@ -328,6 +388,71 @@ function extractDrawnCardPresence(value: unknown): { hasDrawnCardField: boolean;
     return { hasDrawnCardField: false, present: false };
 }
 
+function parseMoveZone(value: unknown): MoveZoneSignal | null {
+    const normalized = String(value ?? "").trim().toUpperCase();
+    if (normalized === "DRAW_PILE" || normalized === "DISCARD_PILE" || normalized === "HAND") {
+        return normalized;
+    }
+    return null;
+}
+
+function parseMoveStep(value: unknown): ParsedMoveStep | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const sourceZone = parseMoveZone(record.sourceZone);
+    const targetZone = parseMoveZone(record.targetZone);
+    if (!sourceZone || !targetZone) {
+        return null;
+    }
+    const sourceUserId = Number(record.sourceUserId);
+    const sourceCardIndex = Number(record.sourceCardIndex);
+    const targetUserId = Number(record.targetUserId);
+    const targetCardIndex = Number(record.targetCardIndex);
+    const parsedValue = Number(record.value);
+    return {
+        sourceZone,
+        sourceUserId: Number.isFinite(sourceUserId) ? sourceUserId : null,
+        sourceCardIndex: Number.isFinite(sourceCardIndex) ? sourceCardIndex : null,
+        targetZone,
+        targetUserId: Number.isFinite(targetUserId) ? targetUserId : null,
+        targetCardIndex: Number.isFinite(targetCardIndex) ? targetCardIndex : null,
+        hidden: record.hidden !== false,
+        value: Number.isFinite(parsedValue) ? parsedValue : undefined,
+    };
+}
+
+function extractLastMoveEvent(value: unknown): ParsedMoveEvent | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const candidate = record.lastMoveEvent ?? (record.game && typeof record.game === "object"
+        ? (record.game as Record<string, unknown>).lastMoveEvent
+        : null);
+    if (!candidate || typeof candidate !== "object") {
+        return null;
+    }
+    const moveRecord = candidate as Record<string, unknown>;
+    const sequence = Number(moveRecord.sequence);
+    if (!Number.isFinite(sequence) || sequence <= 0) {
+        return null;
+    }
+    const primary = parseMoveStep(moveRecord.primary);
+    if (!primary) {
+        return null;
+    }
+    const secondary = parseMoveStep(moveRecord.secondary);
+    const actorUserId = Number(moveRecord.actorUserId);
+    return {
+        sequence,
+        actorUserId: Number.isFinite(actorUserId) ? actorUserId : null,
+        primary,
+        secondary,
+    };
+}
+
 function areSeatCardsEquivalent(previousCard?: SeatCardView, nextCard?: SeatCardView): boolean {
     if (!previousCard && !nextCard) {
         return true;
@@ -435,8 +560,16 @@ const Game = () => {
       const [isSubmittingInitialPeek, setIsSubmittingInitialPeek] = useState<boolean>(false);
       const revealedPeekCount = peekVisibleCards.filter(Boolean).length;
       //#19 Add a visual timer/progress bar that syncs with the backend to warn the player of expiring time
-      const TURN_DURATION = 30;
+      const DEFAULT_TURN_SECONDS = 30;
+      const DEFAULT_INITIAL_PEEK_SECONDS = 10;
       const [rematchDecisionDuration, setRematchDecisionDuration] = useState<number>(60);
+      const [turnDurationSeconds, setTurnDurationSeconds] = useState<number>(DEFAULT_TURN_SECONDS);
+      const [initialPeekDurationSeconds, setInitialPeekDurationSeconds] =
+          useState<number>(DEFAULT_INITIAL_PEEK_SECONDS);
+      const [isCaboCalledGlobal, setIsCaboCalledGlobal] = useState<boolean>(false);
+      const [afkTimeoutSeconds, setAfkTimeoutSeconds] = useState<number>(300);
+      const [afkRemainingSeconds, setAfkRemainingSeconds] = useState<number>(300);
+      const [socketSynced, setSocketSynced] = useState<boolean>(true);
       // #20
       const [drawnCard, setDrawnCard] = useState<Card | null>(null);
       const [selectedDrawSource, setSelectedDrawSource] = useState<"draw_pile" | "discard_pile" | null>(null);
@@ -464,20 +597,22 @@ const Game = () => {
       const discardRevealTimeoutRef = useRef<number | null>(null);
       const abilityPeekHideTimeoutRef = useRef<number | null>(null);
       const discardTopOverrideTimeoutRef = useRef<number | null>(null);
-      const pendingDiscardToHandCardRef = useRef<Card | null>(null);
+      const pendingRemoteDrawAnimationRef = useRef<PendingRemoteDrawAnimation | null>(null);
       const drawnCardPresentRef = useRef<boolean>(false);
       const playerCardsByIdRef = useRef<Record<number, SeatCardView[]>>({});
       const discardTopCardRef = useRef<Card | null>(null);
       const currentTurnUserIdRef = useRef<number | null>(null);
+      const lastActivityMsRef = useRef<number>(Date.now());
+      const lastProcessedMoveSequenceRef = useRef<number>(0);
       const [orderedPlayerIds, setOrderedPlayerIds] = useState<number[]>([]);
       const [playerCardsById, setPlayerCardsById] = useState<Record<number, SeatCardView[]>>({});
       const [playerNamesById, setPlayerNamesById] = useState<Record<number, string>>({});
       const [currentTurnUserId, setCurrentTurnUserId] = useState<number | null>(null);
-      const [turnTimeLeft, setTurnTimeLeft] = useState<number>(TURN_DURATION);
+      const [turnTimeLeft, setTurnTimeLeft] = useState<number>(DEFAULT_TURN_SECONDS);
       const [isCallingCabo, setIsCallingCabo] = useState<boolean>(false);
       const [isSubmittingRematchDecision, setIsSubmittingRematchDecision] = useState<boolean>(false);
       const [rematchCountdown, setRematchCountdown] = useState<number>(0);
-      const [myRematchDecision, setMyRematchDecision] = useState<boolean | null>(null);
+      const [myRematchDecision, setMyRematchDecision] = useState<string | null>(null);
 
       const parsedSelfUserId = Number(userId);
       const selfUserId = userId.trim() !== "" && Number.isFinite(parsedSelfUserId)
@@ -628,6 +763,37 @@ const Game = () => {
           return null;
       };
 
+      const resolveAnchorFromMoveStep = (step: ParsedMoveStep, endpoint: "source" | "target"): HTMLDivElement | null => {
+          const zone = endpoint === "source" ? step.sourceZone : step.targetZone;
+          const userId = endpoint === "source" ? step.sourceUserId : step.targetUserId;
+          const cardIndex = endpoint === "source" ? step.sourceCardIndex : step.targetCardIndex;
+          if (zone === "DRAW_PILE") {
+              return drawPileCardRef.current;
+          }
+          if (zone === "DISCARD_PILE") {
+              return discardPileCardRef.current;
+          }
+          if (zone === "HAND" && userId != null) {
+              const resolvedIndex = cardIndex != null
+                  ? normalizeHandSlotIndex(cardIndex, HAND_SIZE) ?? Math.floor(HAND_SIZE / 2)
+                  : Math.floor(HAND_SIZE / 2);
+              return getCardAnchorByPlayerId(userId, resolvedIndex);
+          }
+          return null;
+      };
+
+      const animateParsedMoveStep = (step: ParsedMoveStep) => {
+          const sourceAnchor = resolveAnchorFromMoveStep(step, "source");
+          const targetAnchor = resolveAnchorFromMoveStep(step, "target");
+          if (!sourceAnchor || !targetAnchor) {
+              return;
+          }
+          launchFlyingCardAnimation(sourceAnchor, targetAnchor, {
+              hidden: step.hidden,
+              value: step.value,
+          });
+      };
+
       const findChangedHandIndices = (
           previousHand: SeatCardView[] | undefined,
           nextHand: SeatCardView[] | undefined
@@ -754,14 +920,17 @@ const Game = () => {
       useEffect(() => {
           const authToken = token.trim();
           if (!authToken || !gameId) {
+              setSocketSynced(false);
               return;
           }
 
+          setSocketSynced(true);
           const client = new Client({
               webSocketFactory: () => new SockJS(getStompBrokerUrl()),
               connectHeaders: { Authorization: authToken },
               reconnectDelay: 5000,
               onConnect: () => {
+                  setSocketSynced(true);
                   client.subscribe("/user/queue/game-state", (message) => {
                       try {
                           const payload = JSON.parse(String(message.body ?? "{}")) as GameStateSignal;
@@ -769,12 +938,34 @@ const Game = () => {
                           if (payloadGameId && payloadGameId !== gameId) {
                               return;
                           }
+                          setSocketSynced(true);
 
                           const nextStatus = extractGameStatus(payload);
                           if (nextStatus) {
                               setGameStatus((currentStatus) =>
                                   currentStatus === nextStatus ? currentStatus : nextStatus
                               );
+                          }
+
+                          setIsCaboCalledGlobal(payload?.caboCalled === true);
+
+                          const nextTurnSeconds = Number(payload?.turnSeconds);
+                          if (Number.isFinite(nextTurnSeconds) && nextTurnSeconds > 0) {
+                              setTurnDurationSeconds(Math.floor(nextTurnSeconds));
+                          }
+
+                          const nextInitialPeekSeconds = Number(payload?.initialPeekSeconds);
+                          if (Number.isFinite(nextInitialPeekSeconds) && nextInitialPeekSeconds > 0) {
+                              setInitialPeekDurationSeconds(Math.floor(nextInitialPeekSeconds));
+                          }
+
+                          const nextRematchSeconds = Number(payload?.rematchDecisionSeconds);
+                          if (Number.isFinite(nextRematchSeconds) && nextRematchSeconds > 0) {
+                              setRematchDecisionDuration(Math.floor(nextRematchSeconds));
+                          }
+                          const nextAfkTimeout = Number(payload?.afkTimeoutSeconds);
+                          if (Number.isFinite(nextAfkTimeout) && nextAfkTimeout > 0) {
+                              setAfkTimeoutSeconds(Math.floor(nextAfkTimeout));
                           }
 
                           const nextPlayerIds = extractPlayerIds(payload);
@@ -809,59 +1000,105 @@ const Game = () => {
                           const canAnimateOtherPlayerMove = actingPlayerId != null && (
                               selfUserId == null || actingPlayerId !== selfUserId
                           );
+                          let handledByExplicitMoveEvent = false;
+                          const explicitMoveEvent = extractLastMoveEvent(payload);
+                          if (
+                              explicitMoveEvent &&
+                              explicitMoveEvent.sequence > lastProcessedMoveSequenceRef.current &&
+                              (selfUserId == null || explicitMoveEvent.actorUserId !== selfUserId)
+                          ) {
+                              animateParsedMoveStep(explicitMoveEvent.primary);
+                              if (explicitMoveEvent.secondary) {
+                                  animateParsedMoveStep(explicitMoveEvent.secondary);
+                              }
+                              lastProcessedMoveSequenceRef.current = explicitMoveEvent.sequence;
+                              handledByExplicitMoveEvent = true;
+                          }
                           const discardChanged =
                               (previousDiscardTopCard?.value ?? null) !== (effectiveNextDiscardTopCard?.value ?? null);
 
                           if (
+                              !handledByExplicitMoveEvent &&
                               canAnimateOtherPlayerMove &&
-                              discardChanged &&
-                              previousDiscardTopCard &&
                               !previousDrawnCardPresent &&
                               nextDrawnCardPresent
                           ) {
-                              pendingDiscardToHandCardRef.current = previousDiscardTopCard;
-                              setDiscardTopOverrideUntilClear(previousDiscardTopCard);
+                              if (discardChanged && previousDiscardTopCard) {
+                                  pendingRemoteDrawAnimationRef.current = {
+                                      source: "discard_pile",
+                                      cardValue: previousDiscardTopCard.value,
+                                  };
+                                  setDiscardTopOverrideUntilClear(previousDiscardTopCard);
+                              } else {
+                                  pendingRemoteDrawAnimationRef.current = {
+                                      source: "draw_pile",
+                                  };
+                              }
                           }
 
                           if (
+                              !handledByExplicitMoveEvent &&
                               canAnimateOtherPlayerMove &&
-                              pendingDiscardToHandCardRef.current &&
                               previousDrawnCardPresent &&
                               !nextDrawnCardPresent
                           ) {
-                              const resolvedActingPlayerId = actingPlayerId as number;
-                              const previousActingHand = previousPlayerCardsById[resolvedActingPlayerId];
-                              const nextActingHand = effectiveNextPlayerCardsById[resolvedActingPlayerId];
-                              const changedIndices = findChangedHandIndices(previousActingHand, nextActingHand);
-                              const touchedIndices = touchedHandIndicesByPlayerId[resolvedActingPlayerId] ?? [];
-                              const normalizedTouchedIndex = touchedIndices.length === 1
-                                  ? normalizeHandSlotIndex(touchedIndices[0], HAND_SIZE)
-                                  : null;
-                              const resolvedTargetIndex =
-                                  changedIndices.length > 0
-                                      ? changedIndices[0]
-                                      : normalizedTouchedIndex != null
-                                          ? normalizedTouchedIndex
-                                          : null;
-                              const targetAnchor = resolvedTargetIndex != null
-                                  ? getCardAnchorByPlayerId(resolvedActingPlayerId, resolvedTargetIndex)
-                                  : null;
-                              const discardAnchor = discardPileCardRef.current;
-                              const pickedDiscardCard = pendingDiscardToHandCardRef.current;
+                              const pendingAnimation = pendingRemoteDrawAnimationRef.current;
+                              if (pendingAnimation) {
+                                  const resolvedActingPlayerId = actingPlayerId as number;
+                                  const previousActingHand = previousPlayerCardsById[resolvedActingPlayerId];
+                                  const nextActingHand = effectiveNextPlayerCardsById[resolvedActingPlayerId];
+                                  const changedIndices = findChangedHandIndices(previousActingHand, nextActingHand);
+                                  const touchedIndices = touchedHandIndicesByPlayerId[resolvedActingPlayerId] ?? [];
+                                  const normalizedTouchedIndex = touchedIndices.length === 1
+                                      ? normalizeHandSlotIndex(touchedIndices[0], HAND_SIZE)
+                                      : null;
+                                  const resolvedTargetIndex =
+                                      changedIndices.length > 0
+                                          ? changedIndices[0]
+                                          : normalizedTouchedIndex != null
+                                              ? normalizedTouchedIndex
+                                              : null;
+                                  const fallbackTargetIndex = Math.max(0, Math.min(HAND_SIZE - 1, Math.floor(HAND_SIZE / 2)));
+                                  const targetAnchor = resolvedTargetIndex != null
+                                      ? getCardAnchorByPlayerId(resolvedActingPlayerId, resolvedTargetIndex)
+                                      : getCardAnchorByPlayerId(resolvedActingPlayerId, fallbackTargetIndex);
+                                  const discardAnchor = discardPileCardRef.current;
+                                  const drawAnchor = drawPileCardRef.current;
+                                  const sourceAnchor = pendingAnimation.source === "discard_pile"
+                                      ? discardAnchor
+                                      : drawAnchor;
 
-                              if (discardAnchor && targetAnchor && pickedDiscardCard) {
-                                  launchFlyingCardAnimation(discardAnchor, targetAnchor, {
-                                      hidden: false,
-                                      value: pickedDiscardCard.value,
-                                  });
-                                  launchFlyingCardAnimation(targetAnchor, discardAnchor, {
-                                      hidden: true,
-                                  });
-                                  setDiscardTopOverrideUntilClear(pickedDiscardCard, 460);
+                                  if (sourceAnchor && targetAnchor) {
+                                      launchFlyingCardAnimation(sourceAnchor, targetAnchor, {
+                                          hidden: pendingAnimation.source !== "discard_pile",
+                                          value: pendingAnimation.cardValue,
+                                      });
+                                  }
+
+                                  if (discardChanged && discardAnchor) {
+                                      if (targetAnchor) {
+                                          launchFlyingCardAnimation(targetAnchor, discardAnchor, {
+                                              hidden: true,
+                                          });
+                                      } else if (pendingAnimation.source === "draw_pile" && drawAnchor) {
+                                          launchFlyingCardAnimation(drawAnchor, discardAnchor, {
+                                              hidden: true,
+                                          });
+                                      }
+                                  }
+
+                                  if (pendingAnimation.source === "discard_pile" && pendingAnimation.cardValue != null) {
+                                      setDiscardTopOverrideUntilClear(
+                                          { value: pendingAnimation.cardValue, visibility: true, ability: "" },
+                                          460
+                                      );
+                                  } else {
+                                      setDiscardTopOverrideUntilClear(null);
+                                  }
+                                  pendingRemoteDrawAnimationRef.current = null;
                               } else {
                                   setDiscardTopOverrideUntilClear(null);
                               }
-                              pendingDiscardToHandCardRef.current = null;
                           }
 
                           if (Object.keys(parsedNextPlayerCardsById).length > 0) {
@@ -888,6 +1125,15 @@ const Game = () => {
                       }
                   });
               },
+              onStompError: () => {
+                  setSocketSynced(false);
+              },
+              onWebSocketClose: () => {
+                  setSocketSynced(false);
+              },
+              onWebSocketError: () => {
+                  setSocketSynced(false);
+              },
           });
 
           client.activate();
@@ -902,6 +1148,51 @@ const Game = () => {
           seatAssignments.leftOpponentId,
           seatAssignments.rightOpponentId,
       ]);
+
+      useEffect(() => {
+          if (!token || !gameId) {
+              return;
+          }
+
+          const markActive = () => {
+              lastActivityMsRef.current = Date.now();
+          };
+          const markActiveOnVisible = () => {
+              if (document.visibilityState === "visible") {
+                  markActive();
+              }
+          };
+
+          markActive();
+          window.addEventListener("pointerdown", markActive, { passive: true });
+          window.addEventListener("keydown", markActive, { passive: true });
+          window.addEventListener("focus", markActive, { passive: true });
+          document.addEventListener("visibilitychange", markActiveOnVisible);
+
+          return () => {
+              window.removeEventListener("pointerdown", markActive);
+              window.removeEventListener("keydown", markActive);
+              window.removeEventListener("focus", markActive);
+              document.removeEventListener("visibilitychange", markActiveOnVisible);
+          };
+      }, [token, gameId]);
+
+      useEffect(() => {
+          if (!token || !gameId) {
+              return;
+          }
+
+          const tick = () => {
+              const elapsedSeconds = Math.floor((Date.now() - lastActivityMsRef.current) / 1000);
+              setAfkRemainingSeconds(Math.max(0, afkTimeoutSeconds - elapsedSeconds));
+          };
+
+          tick();
+          const intervalId = window.setInterval(tick, 1000);
+          return () => {
+              window.clearInterval(intervalId);
+          };
+      }, [token, gameId, afkTimeoutSeconds]);
 
       useEffect(() => {
           if (gameStatus === "initial_peek") {
@@ -991,26 +1282,54 @@ const Game = () => {
           }
 
           let active = true;
+          const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
           const navigateAfterRound = async () => {
-              try {
-                  const response = await apiService.getWithAuth<{ sessionId?: string }>(
-                      `/games/${gameId}/post-round-lobby`,
-                      token
-                  );
-                  if (!active) {
-                      return;
+              // Rematch lobby assignment can be slightly delayed after ROUND_ENDED.
+              // Retry briefly before falling back to dashboard.
+              for (let attempt = 0; attempt < 10; attempt += 1) {
+                  try {
+                      const response = await apiService.getWithAuth<{ sessionId?: string }>(
+                          `/games/${gameId}/post-round-lobby`,
+                          token
+                      );
+                      if (!active) {
+                          return;
+                      }
+                      const waitingSessionId = String(response?.sessionId ?? "").trim();
+                      if (waitingSessionId) {
+                          setActiveSessionId(waitingSessionId);
+                          router.replace(`/lobby/${encodeURIComponent(waitingSessionId)}`);
+                          return;
+                      }
+                  } catch {
+                      // continue to fallback checks below
                   }
-                  const waitingSessionId = String(response?.sessionId ?? "").trim();
-                  if (waitingSessionId) {
-                      setActiveSessionId(waitingSessionId);
-                      router.replace(`/lobby/${encodeURIComponent(waitingSessionId)}`);
-                      return;
+
+                  try {
+                      const myWaitingLobby = await apiService.getWithAuth<{ sessionId?: string }>(
+                          "/lobbies/my/waiting",
+                          token
+                      );
+                      if (!active) {
+                          return;
+                      }
+                      const myWaitingSessionId = String(myWaitingLobby?.sessionId ?? "").trim();
+                      if (myWaitingSessionId) {
+                          setActiveSessionId(myWaitingSessionId);
+                          router.replace(`/lobby/${encodeURIComponent(myWaitingSessionId)}`);
+                          return;
+                      }
+                  } catch {
+                      // still waiting for backend handoff
                   }
+
+                  if (attempt < 9) {
+                      await sleep(800);
+                  }
+              }
+
+              if (active) {
                   router.replace("/dashboard");
-              } catch {
-                  if (active) {
-                      router.replace("/dashboard");
-                  }
               }
           };
 
@@ -1032,13 +1351,18 @@ const Game = () => {
           showTurnCountdown && selfUserId != null && currentTurnUserId === selfUserId;
       const isCurrentTurnMine = selfUserId != null && currentTurnUserId === selfUserId;
       const isMyTurnUi = isCurrentTurnMine && !isPeekPhase && !isAwaitingRematchDecision;
+      const afkWarningLeadSeconds = getAfkWarningLeadSeconds(afkTimeoutSeconds);
+      const showAfkWarning =
+          !isAwaitingRematchDecision &&
+          gameStatus !== "round_ended" &&
+          afkRemainingSeconds <= afkWarningLeadSeconds;
       useEffect(() => {
           if (!showTurnCountdown) {
-              setTurnTimeLeft(TURN_DURATION);
+              setTurnTimeLeft(turnDurationSeconds);
               return;
           }
 
-          setTurnTimeLeft(TURN_DURATION);
+          setTurnTimeLeft(turnDurationSeconds);
           const intervalId = setInterval(() => {
               setTurnTimeLeft((previous) => (previous <= 1 ? 0 : previous - 1));
           }, 1000);
@@ -1046,7 +1370,7 @@ const Game = () => {
           return () => {
               clearInterval(intervalId);
           };
-      }, [showTurnCountdown, currentTurnUserId]);
+      }, [showTurnCountdown, currentTurnUserId, turnDurationSeconds]);
 
       useEffect(() => {
           const fetchDrawnCard = async () => {
@@ -1143,7 +1467,6 @@ const isDiscardPileSelectedForTurnAction =
 const shouldHighlightPileChoice = canDrawFromPile || canDrawFromDiscardPile;
 const shouldHighlightDiscardPileAsAction = shouldHighlightPileChoice || canDiscardDrawnCard;
 const shouldHighlightOwnCardsForTurnSwap = canSwapDrawnCardWithHand;
-const hideOpponentCardsInitialPeek = gameStatus === "initial_peek" || isPeekPhase;
 const visibleDiscardPileCard =
     isDiscardPileSelectedForTurnAction && drawnCard
         ? drawnCard
@@ -1778,7 +2101,7 @@ const callCabo = () => {
     });
 };
 
-const submitRematchChoice = (rematch: boolean) => {
+const submitRematchChoice = (decision: "CONTINUE" | "FRESH" | "NONE") => {
     if (!isAwaitingRematchDecision || !gameId || !token || isSubmittingRematchDecision || myRematchDecision !== null) {
         return;
     }
@@ -1786,10 +2109,13 @@ const submitRematchChoice = (rematch: boolean) => {
     setIsSubmittingRematchDecision(true);
     void apiService.postWithAuth<void>(
         `/games/${gameId}/rematch/decision`,
-        { rematch },
+        { decision },
         token
     ).then(() => {
-        setMyRematchDecision(rematch);
+        setMyRematchDecision(decision);
+        if (decision === "NONE") {
+            router.replace("/dashboard");
+        }
     }).catch((error) => {
         console.error("Failed to submit rematch decision:", error);
     }).finally(() => {
@@ -1818,7 +2144,7 @@ useEffect(() => {
         clearDiscardRevealTimer();
         clearAbilityPeekHideTimer();
         clearDiscardTopOverrideTimer();
-        pendingDiscardToHandCardRef.current = null;
+        pendingRemoteDrawAnimationRef.current = null;
     };
 }, []);
 
@@ -1911,32 +2237,71 @@ const playerListRows = tablePlayerIds.map((id) => {
                                   <span className="game-rematch-countdown">{rematchCountdown}s</span>
                               </p>
                               <p className="game-rematch-subtext">
-                                  Choose now. If at least 2 players choose rematch, a new lobby is created for them.
+                                  Continue keeps the same lobby code. Fresh creates a new lobby code.
                               </p>
                               {myRematchDecision != null && (
                                   <p className="game-rematch-choice">
-                                      You chose: {myRematchDecision ? "Rematch" : "No Rematch"}.
+                                      You chose: {
+                                          myRematchDecision === "CONTINUE"
+                                              ? "Rematch (Continue Round Count)"
+                                              : myRematchDecision === "FRESH"
+                                                  ? "Rematch (Fresh Game)"
+                                                  : "No Rematch"
+                                      }.
                                       Waiting for other players...
                                   </p>
                               )}
                               <div className="game-rematch-actions">
                                   <Button
-                                      type={myRematchDecision === true ? "primary" : "default"}
+                                      type={myRematchDecision === "CONTINUE" ? "primary" : "default"}
                                       disabled={myRematchDecision !== null || isSubmittingRematchDecision}
                                       loading={isSubmittingRematchDecision && myRematchDecision === null}
-                                      onClick={() => submitRematchChoice(true)}
+                                      onClick={() => submitRematchChoice("CONTINUE")}
                                   >
-                                      Rematch
+                                      Rematch (Continue)
                                   </Button>
                                   <Button
-                                      type={myRematchDecision === false ? "primary" : "default"}
+                                      type={myRematchDecision === "FRESH" ? "primary" : "default"}
+                                      disabled={myRematchDecision !== null || isSubmittingRematchDecision}
+                                      onClick={() => submitRematchChoice("FRESH")}
+                                  >
+                                      Rematch (Fresh)
+                                  </Button>
+                                  <Button
+                                      type={myRematchDecision === "NONE" ? "primary" : "default"}
                                       danger
                                       disabled={myRematchDecision !== null || isSubmittingRematchDecision}
-                                      onClick={() => submitRematchChoice(false)}
+                                      onClick={() => submitRematchChoice("NONE")}
                                   >
                                       No Rematch
                                   </Button>
                               </div>
+                          </div>
+                      </div>
+                  )}
+
+                  {!socketSynced && gameStatus !== "initial_peek" && (
+                      <div className="game-rematch-overlay" role="status" aria-live="polite">
+                          <div className="game-rematch-card">
+                              <h2 className="game-rematch-title">Resyncing</h2>
+                              <p className="game-rematch-text">
+                                  Please wait until the current player&apos;s turn is finished.
+                              </p>
+                          </div>
+                      </div>
+                  )}
+
+                  {showAfkWarning && (
+                      <div className="game-rematch-overlay" role="status" aria-live="polite">
+                          <div className="game-rematch-card">
+                              <h2 className="game-rematch-title">AFK Warning</h2>
+                              <p className="game-rematch-text">
+                                  Inactivity timeout in{" "}
+                                  <span className="game-rematch-countdown">{afkRemainingSeconds}s</span>
+                              </p>
+                              <p className="game-rematch-subtext">
+                                  Move your mouse, press a key, or return focus to avoid auto timeout.
+                              </p>
                           </div>
                       </div>
                   )}
@@ -1952,7 +2317,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                   {/* #17: PeekTimer overlay */}
                   {isPeekPhase && (
                       <PeekTimer
-                        duration={10}
+                        duration={initialPeekDurationSeconds}
                       />
                   )}
 
@@ -1973,7 +2338,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           className="game-opponent-card-anchor"
                                       >
                                           <CardComponent
-                                              hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
+                                              hidden={true}
                                               value={card.value}
                                               size="small"
                                               // #28: highlight opponent cards during ability phase
@@ -2028,7 +2393,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           className="game-opponent-card-anchor"
                                       >
                                           <CardComponent
-                                              hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
+                                              hidden={true}
                                               value={card.value}
                                               size="small"
                                               // #28: highlight opponent cards during ability phase
@@ -2083,7 +2448,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           className="game-opponent-card-anchor"
                                       >
                                           <CardComponent
-                                              hidden={hideOpponentCardsInitialPeek ? true : card.faceDown}
+                                              hidden={true}
                                               value={card.value}
                                               size="small"
                                               // #28: highlight opponent cards during ability phase
@@ -2189,7 +2554,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                               <div
                                   className="game-turn-progress-fill"
                                   style={{
-                                      width: `${Math.max(0, Math.min(100, (turnTimeLeft / TURN_DURATION) * 100))}%`,
+                                      width: `${Math.max(0, Math.min(100, (turnTimeLeft / turnDurationSeconds) * 100))}%`,
                                   }}
                               />
                           </div>
@@ -2225,11 +2590,12 @@ const playerListRows = tablePlayerIds.map((id) => {
                       <Button disabled={!isMyTurnUi}>Scores</Button>
                       <Button
                           type="primary"
+                          className={isCaboCalledGlobal ? "game-cabo-called-btn" : ""}
                           disabled={!canCallCabo}
                           loading={isCallingCabo}
                           onClick={callCabo}
                       >
-                          Call Cabo
+                          {isCaboCalledGlobal ? "Cabo Called! Last Round!" : "Call Cabo"}
                       </Button>
                   </div>
 

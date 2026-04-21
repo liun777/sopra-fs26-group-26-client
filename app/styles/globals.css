@@ -156,6 +156,94 @@ h1 {
   line-height: 1.35;
 }
 
+.lobby-afk-warning-banner {
+  margin-top: 12px;
+  border: 1px solid #f04a4a;
+  background: rgba(128, 10, 10, 0.35);
+  color: #ffecec;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lobby-settings-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lobby-setting-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lobby-setting-row:last-child {
+  border-bottom: none;
+}
+
+.lobby-setting-row-label {
+  text-align: left;
+  color: #f4f7ff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.lobby-setting-row-control {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lobby-setting-row-control .ant-slider {
+  flex: 1;
+  margin: 0;
+}
+
+.lobby-setting-row-value {
+  min-width: 52px;
+  text-align: right;
+  color: #ffe4cf;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 820px) {
+  .lobby-setting-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .lobby-setting-row-value {
+    min-width: 44px;
+  }
+}
+
+.lobby-timer-settings-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 12px;
+}
+
+.lobby-timer-settings-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #e7edf8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .lobby-section-title-row {
   width: 100%;
   display: flex;
@@ -977,7 +1065,7 @@ h1 {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
 }
 
-/* Persistent reconnect prompt (higher priority than invite popup) */
+/* Persistent reconnect prompt (highest prio, invite prompts are lower prio) */
 .cabo-reconnect-corner {
   position: fixed;
   right: 16px;
@@ -1258,6 +1346,7 @@ body.cabo-reconnect-active .cabo-invite-corner {
   backdrop-filter: blur(2px);
 }
 
+/* rematch elements */
 .game-rematch-overlay {
   position: absolute;
   inset: 0;
@@ -1327,10 +1416,33 @@ body.cabo-reconnect-active .cabo-invite-corner {
   margin-top: 16px;
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
-/* more a placeholder for game clarification - is necessary, but needs propar implmentation */
+.game-cabo-called-btn.ant-btn-primary,
+.game-cabo-called-btn.ant-btn-primary:hover,
+.game-cabo-called-btn.ant-btn-primary:focus {
+  background-color: #c0392b !important;
+  border-color: #a93226 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.2), 0 0 16px rgba(231, 76, 60, 0.5) !important;
+  animation: gameCaboCalledPulse 1.25s ease-in-out infinite;
+}
+
+@keyframes gameCaboCalledPulse {
+  0% {
+    box-shadow: 0 0 0 1px rgba(192, 57, 43, 0.2), 0 0 10px rgba(231, 76, 60, 0.32);
+  }
+  50% {
+    box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.36), 0 0 20px rgba(231, 76, 60, 0.65);
+  }
+  100% {
+    box-shadow: 0 0 0 1px rgba(192, 57, 43, 0.2), 0 0 10px rgba(231, 76, 60, 0.32);
+  }
+}
+
+/* more a placeholder for game clarification ... is necessary, but needs propar implmentation */
 .game-player-list {
   position: absolute;
   top: 14px;

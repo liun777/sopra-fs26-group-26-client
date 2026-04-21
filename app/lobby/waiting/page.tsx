@@ -10,13 +10,13 @@ import {
 } from "@/hooks/useOutgoingInviteStatuses";
 import type { ApplicationError } from "@/types/error";
 import type { User } from "@/types/user";
-import { getStompBrokerUrl } from "@/utils/domain";
+import { getApiDomain, getStompBrokerUrl } from "@/utils/domain";
 import { PresenceKey, toPresenceKey, toPresenceLabel } from "@/utils/presence";
 import { Client } from "@stomp/stompjs";
-import { Button, Card, Collapse, Input, List, Popconfirm, Spin, Switch, Typography } from "antd";
+import { Button, Card, Collapse, Input, List, Popconfirm, Slider, Spin, Switch, Typography } from "antd";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type WaitingRow = {
   username: string;
@@ -26,6 +26,11 @@ type WaitingRow = {
 type WaitingView = {
   sessionId?: string;
   isPublic?: boolean;
+  afkTimeoutSeconds?: number;
+  initialPeekSeconds?: number;
+  turnSeconds?: number;
+  abilityRevealSeconds?: number;
+  rematchDecisionSeconds?: number;
   players?: WaitingRow[];
 };
 
@@ -68,10 +73,51 @@ type LobbySlot = {
   ready: boolean;
 };
 
+type LobbyTimerSettings = {
+  afkTimeoutSeconds: number;
+  initialPeekSeconds: number;
+  turnSeconds: number;
+  abilityRevealSeconds: number;
+  rematchDecisionSeconds: number;
+};
+
 const MAX_ACTIVE_INVITES = 10; // CAN BE CHANGED, set to 10 to avoid users spamming invites, but enough for legit cases
 const MAX_LOBBY_PLAYERS = 4;
 const HOST_CROWN = "\uD83D\uDC51\uFE0E";
 const KICK_ICON = "\u2716";
+const DEFAULT_LOBBY_TIMERS: LobbyTimerSettings = {
+  afkTimeoutSeconds: 300,
+  initialPeekSeconds: 10,
+  turnSeconds: 30,
+  abilityRevealSeconds: 5,
+  rematchDecisionSeconds: 60,
+};
+
+const TIMER_LIMITS = {
+  afkTimeoutSeconds: { min: 180, max: 1200 },
+  initialPeekSeconds: { min: 3, max: 60 },
+  turnSeconds: { min: 10, max: 60 },
+  abilityRevealSeconds: { min: 3, max: 10 },
+  rematchDecisionSeconds: { min: 10, max: 60 },
+} as const;
+
+function clampTimerValue(
+  key: keyof LobbyTimerSettings,
+  nextValue: number,
+): number {
+  const { min, max } = TIMER_LIMITS[key];
+  return Math.max(min, Math.min(max, Math.floor(nextValue)));
+}
+
+function getAfkWarningLeadSeconds(afkTimeoutSeconds: number): number {
+  if (afkTimeoutSeconds <= 300) {
+    return 60;
+  }
+  if (afkTimeoutSeconds <= 600) {
+    return 180;
+  }
+  return 300;
+}
 
 function normalizeValue(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
@@ -302,9 +348,15 @@ function WaitingLobbyContent() {
   >({});
   const [inviteSearch, setInviteSearch] = useState("");
   const debouncedInviteSearch = useDebouncedValue(inviteSearch, 1000);
+  const [lobbyTimerSettings, setLobbyTimerSettings] = useState<LobbyTimerSettings>(DEFAULT_LOBBY_TIMERS);
+  const [updatingTimerKey, setUpdatingTimerKey] = useState<string>("");
   const [readyByUsername, setReadyByUsername] = useState<Record<string, boolean>>({});
   const [startingGame, setStartingGame] = useState(false);
   const [, setLaunchingGame] = useState(false);
+  const [lobbyAfkRemainingSeconds, setLobbyAfkRemainingSeconds] = useState<number>(DEFAULT_LOBBY_TIMERS.afkTimeoutSeconds);
+  const lastLobbyActivityMsRef = useRef<number>(Date.now());
+  const timerSettingDebounceMs = 300;
+  const timerSaveTimeoutsRef = useRef<Record<string, number>>({});
 
   const launchToGame = useCallback((rawGameId: unknown, rawStatus?: string, forceInitialPeekBootstrap = false) => {
     const gameId = String(rawGameId ?? "").trim();
@@ -343,6 +395,75 @@ function WaitingLobbyContent() {
       // ignore temporary lookup failures
     }
   }, [api, launchToGame, token]);
+
+  useEffect(() => {
+    const authToken = token.trim();
+    const sessionId = sessionIdParam.trim();
+    if (!authToken || !sessionId) {
+      return;
+    }
+
+    void fetch(`${getApiDomain()}/heartbeat`, {
+      method: "POST",
+      headers: { Authorization: authToken },
+    }).catch(() => {
+      // ignore transient failures
+    });
+  }, [sessionIdParam, token]);
+
+  useEffect(() => {
+    const authToken = token.trim();
+    const sessionId = sessionIdParam.trim();
+    if (!authToken || !sessionId) {
+      return;
+    }
+
+    const markLobbyActive = () => {
+      lastLobbyActivityMsRef.current = Date.now();
+    };
+    const markLobbyActiveOnVisible = () => {
+      if (document.visibilityState === "visible") {
+        markLobbyActive();
+      }
+    };
+
+    markLobbyActive();
+    window.addEventListener("pointerdown", markLobbyActive, { passive: true });
+    window.addEventListener("pointermove", markLobbyActive, { passive: true });
+    window.addEventListener("keydown", markLobbyActive, { passive: true });
+    window.addEventListener("wheel", markLobbyActive, { passive: true });
+    window.addEventListener("touchstart", markLobbyActive, { passive: true });
+    window.addEventListener("focus", markLobbyActive, { passive: true });
+    document.addEventListener("visibilitychange", markLobbyActiveOnVisible);
+
+    return () => {
+      window.removeEventListener("pointerdown", markLobbyActive);
+      window.removeEventListener("pointermove", markLobbyActive);
+      window.removeEventListener("keydown", markLobbyActive);
+      window.removeEventListener("wheel", markLobbyActive);
+      window.removeEventListener("touchstart", markLobbyActive);
+      window.removeEventListener("focus", markLobbyActive);
+      document.removeEventListener("visibilitychange", markLobbyActiveOnVisible);
+    };
+  }, [sessionIdParam, token]);
+
+  useEffect(() => {
+    const authToken = token.trim();
+    const sessionId = sessionIdParam.trim();
+    if (!authToken || !sessionId) {
+      return;
+    }
+    const tick = () => {
+      const elapsedSeconds = Math.floor((Date.now() - lastLobbyActivityMsRef.current) / 1000);
+      setLobbyAfkRemainingSeconds(Math.max(0, lobbyTimerSettings.afkTimeoutSeconds - elapsedSeconds));
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [lobbyTimerSettings.afkTimeoutSeconds, sessionIdParam, token]);
 
   useEffect(() => {
     const sessionId = sessionIdParam.trim();
@@ -457,13 +578,40 @@ function WaitingLobbyContent() {
       );
       setView(waitingView);
       setIsPublicLobby(waitingView?.isPublic !== false);
-    } catch {
+      setLobbyTimerSettings({
+        afkTimeoutSeconds: clampTimerValue(
+          "afkTimeoutSeconds",
+          Number(waitingView?.afkTimeoutSeconds ?? DEFAULT_LOBBY_TIMERS.afkTimeoutSeconds),
+        ),
+        initialPeekSeconds: clampTimerValue(
+          "initialPeekSeconds",
+          Number(waitingView?.initialPeekSeconds ?? DEFAULT_LOBBY_TIMERS.initialPeekSeconds),
+        ),
+        turnSeconds: clampTimerValue(
+          "turnSeconds",
+          Number(waitingView?.turnSeconds ?? DEFAULT_LOBBY_TIMERS.turnSeconds),
+        ),
+        abilityRevealSeconds: clampTimerValue(
+          "abilityRevealSeconds",
+          Number(waitingView?.abilityRevealSeconds ?? DEFAULT_LOBBY_TIMERS.abilityRevealSeconds),
+        ),
+        rematchDecisionSeconds: clampTimerValue(
+          "rematchDecisionSeconds",
+          Number(waitingView?.rematchDecisionSeconds ?? DEFAULT_LOBBY_TIMERS.rematchDecisionSeconds),
+        ),
+      });
+    } catch (error: unknown) {
+      const status = (error as ApplicationError)?.status;
+      if (status === 401 || status === 403 || status === 404) {
+        router.replace("/dashboard?kicked=1");
+        return;
+      }
       setView(null);
       setError("Could not load waiting lobby.");
     } finally {
       setLoading(false);
     }
-  }, [api, token, sessionIdParam]);
+  }, [api, router, token, sessionIdParam]);
 
   useEffect(() => {
     if (!sessionIdParam.trim()) {
@@ -831,6 +979,60 @@ function WaitingLobbyContent() {
     }));
   };
 
+  const updateLobbyTimerSetting = async (
+    key: keyof LobbyTimerSettings,
+    value: number,
+  ) => {
+    if (!userIsHost) {
+      return;
+    }
+
+    const authToken = token.trim();
+    if (!authToken || !sessionId) {
+      return;
+    }
+
+    const nextValue = clampTimerValue(key, value);
+    const previousSettings = lobbyTimerSettings;
+    const nextSettings = { ...previousSettings, [key]: nextValue };
+    setLobbyTimerSettings(nextSettings);
+    setUpdatingTimerKey(key);
+
+    try {
+      await api.patchWithAuth(
+        `/lobbies/${encodeURIComponent(sessionId)}/settings`,
+        { [key]: nextValue },
+        authToken,
+      );
+    } catch {
+      setLobbyTimerSettings(previousSettings);
+    } finally {
+      setUpdatingTimerKey("");
+    }
+  };
+
+  const scheduleLobbyTimerSettingUpdate = (
+    key: keyof LobbyTimerSettings,
+    value: number,
+  ) => {
+    const timeoutKey = String(key);
+    const existingTimeoutId = timerSaveTimeoutsRef.current[timeoutKey];
+    if (existingTimeoutId != null) {
+      window.clearTimeout(existingTimeoutId);
+    }
+    timerSaveTimeoutsRef.current[timeoutKey] = window.setTimeout(() => {
+      void updateLobbyTimerSetting(key, value);
+      delete timerSaveTimeoutsRef.current[timeoutKey];
+    }, timerSettingDebounceMs);
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.values(timerSaveTimeoutsRef.current).forEach((timeoutId) => window.clearTimeout(timeoutId));
+      timerSaveTimeoutsRef.current = {};
+    };
+  }, []);
+
   const handleStartGame = async () => {
     if (!userIsHost || startingGame) {
       return;
@@ -926,6 +1128,13 @@ function WaitingLobbyContent() {
               {userIsHost ? <span>As the host you can invite up to 3 players.</span> : null}
               {/*host vs other players see diff things*/}
             </div>
+            {lobbyAfkRemainingSeconds <= getAfkWarningLeadSeconds(lobbyTimerSettings.afkTimeoutSeconds) ? (
+              <div className="lobby-afk-warning-banner" role="status" aria-live="polite">
+                <span>AFK timeout in </span>
+                <strong>{lobbyAfkRemainingSeconds}s</strong>
+                <span>. Interact with this tab to stay in lobby.</span>
+              </div>
+            ) : null}
           </Card>
 
           <Card
@@ -1090,15 +1299,154 @@ function WaitingLobbyContent() {
               className="dashboard-container"
             >
               <div className="create-lobby-actions">
-                <div className="create-lobby-privacy-toggle">
-                  <span>Invite only</span>
-                  <Switch
-                    className="lobby-private-switch"
-                    checked={!isPublicLobby}
-                    onChange={handlePrivacyToggle}
-                    checkedChildren="Yes"
-                    unCheckedChildren="No"
-                  />
+                <div className="lobby-settings-list">
+                  <div className="lobby-setting-row">
+                    <span className="lobby-setting-row-label">Invite only</span>
+                    <Switch
+                      className="lobby-private-switch"
+                      checked={!isPublicLobby}
+                      onChange={handlePrivacyToggle}
+                      checkedChildren="Yes"
+                      unCheckedChildren="No"
+                    />
+                  </div>
+                  <div className="lobby-setting-row">
+                    <span className="lobby-setting-row-label">AFK Timeout (sec)</span>
+                    <div className="lobby-setting-row-control">
+                      <Slider
+                        min={TIMER_LIMITS.afkTimeoutSeconds.min}
+                        max={TIMER_LIMITS.afkTimeoutSeconds.max}
+                        step={30}
+                        marks={{
+                          [TIMER_LIMITS.afkTimeoutSeconds.min]: String(TIMER_LIMITS.afkTimeoutSeconds.min),
+                          300: "300",
+                          600: "600",
+                          [TIMER_LIMITS.afkTimeoutSeconds.max]: String(TIMER_LIMITS.afkTimeoutSeconds.max),
+                        }}
+                        value={lobbyTimerSettings.afkTimeoutSeconds}
+                        disabled={updatingTimerKey === "afkTimeoutSeconds"}
+                        onChange={(nextValue) => {
+                          const numeric = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+                          const clamped = clampTimerValue("afkTimeoutSeconds", Number(numeric));
+                          setLobbyTimerSettings((prev) => ({
+                            ...prev,
+                            afkTimeoutSeconds: clamped,
+                          }));
+                          scheduleLobbyTimerSettingUpdate("afkTimeoutSeconds", clamped);
+                        }}
+                      />
+                      <span className="lobby-setting-row-value">{lobbyTimerSettings.afkTimeoutSeconds}s</span>
+                    </div>
+                  </div>
+                  <div className="lobby-setting-row">
+                    <span className="lobby-setting-row-label">Initial Peek (sec)</span>
+                    <div className="lobby-setting-row-control">
+                      <Slider
+                        min={TIMER_LIMITS.initialPeekSeconds.min}
+                        max={TIMER_LIMITS.initialPeekSeconds.max}
+                        step={1}
+                        marks={{
+                          [TIMER_LIMITS.initialPeekSeconds.min]: String(TIMER_LIMITS.initialPeekSeconds.min),
+                          10: "10",
+                          30: "30",
+                          [TIMER_LIMITS.initialPeekSeconds.max]: String(TIMER_LIMITS.initialPeekSeconds.max),
+                        }}
+                        value={lobbyTimerSettings.initialPeekSeconds}
+                        disabled={updatingTimerKey === "initialPeekSeconds"}
+                        onChange={(nextValue) => {
+                          const numeric = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+                          const clamped = clampTimerValue("initialPeekSeconds", Number(numeric));
+                          setLobbyTimerSettings((prev) => ({
+                            ...prev,
+                            initialPeekSeconds: clamped,
+                          }));
+                          scheduleLobbyTimerSettingUpdate("initialPeekSeconds", clamped);
+                        }}
+                      />
+                      <span className="lobby-setting-row-value">{lobbyTimerSettings.initialPeekSeconds}s</span>
+                    </div>
+                  </div>
+                  <div className="lobby-setting-row">
+                    <span className="lobby-setting-row-label">Turn Timer (sec)</span>
+                    <div className="lobby-setting-row-control">
+                      <Slider
+                        min={TIMER_LIMITS.turnSeconds.min}
+                        max={TIMER_LIMITS.turnSeconds.max}
+                        step={1}
+                        marks={{
+                          [TIMER_LIMITS.turnSeconds.min]: String(TIMER_LIMITS.turnSeconds.min),
+                          30: "30",
+                          [TIMER_LIMITS.turnSeconds.max]: String(TIMER_LIMITS.turnSeconds.max),
+                        }}
+                        value={lobbyTimerSettings.turnSeconds}
+                        disabled={updatingTimerKey === "turnSeconds"}
+                        onChange={(nextValue) => {
+                          const numeric = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+                          const clamped = clampTimerValue("turnSeconds", Number(numeric));
+                          setLobbyTimerSettings((prev) => ({
+                            ...prev,
+                            turnSeconds: clamped,
+                          }));
+                          scheduleLobbyTimerSettingUpdate("turnSeconds", clamped);
+                        }}
+                      />
+                      <span className="lobby-setting-row-value">{lobbyTimerSettings.turnSeconds}s</span>
+                    </div>
+                  </div>
+                  <div className="lobby-setting-row">
+                    <span className="lobby-setting-row-label">Peek/Spy Reveal (sec)</span>
+                    <div className="lobby-setting-row-control">
+                      <Slider
+                        min={TIMER_LIMITS.abilityRevealSeconds.min}
+                        max={TIMER_LIMITS.abilityRevealSeconds.max}
+                        step={1}
+                        marks={{
+                          [TIMER_LIMITS.abilityRevealSeconds.min]: String(TIMER_LIMITS.abilityRevealSeconds.min),
+                          5: "5",
+                          [TIMER_LIMITS.abilityRevealSeconds.max]: String(TIMER_LIMITS.abilityRevealSeconds.max),
+                        }}
+                        value={lobbyTimerSettings.abilityRevealSeconds}
+                        disabled={updatingTimerKey === "abilityRevealSeconds"}
+                        onChange={(nextValue) => {
+                          const numeric = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+                          const clamped = clampTimerValue("abilityRevealSeconds", Number(numeric));
+                          setLobbyTimerSettings((prev) => ({
+                            ...prev,
+                            abilityRevealSeconds: clamped,
+                          }));
+                          scheduleLobbyTimerSettingUpdate("abilityRevealSeconds", clamped);
+                        }}
+                      />
+                      <span className="lobby-setting-row-value">{lobbyTimerSettings.abilityRevealSeconds}s</span>
+                    </div>
+                  </div>
+                  <div className="lobby-setting-row">
+                    <span className="lobby-setting-row-label">Rematch Decision (sec)</span>
+                    <div className="lobby-setting-row-control">
+                      <Slider
+                        min={TIMER_LIMITS.rematchDecisionSeconds.min}
+                        max={TIMER_LIMITS.rematchDecisionSeconds.max}
+                        step={1}
+                        marks={{
+                          [TIMER_LIMITS.rematchDecisionSeconds.min]: String(TIMER_LIMITS.rematchDecisionSeconds.min),
+                          30: "30",
+                          [TIMER_LIMITS.rematchDecisionSeconds.max]: String(TIMER_LIMITS.rematchDecisionSeconds.max),
+                        }}
+                        value={lobbyTimerSettings.rematchDecisionSeconds}
+                        disabled={updatingTimerKey === "rematchDecisionSeconds"}
+                        onChange={(nextValue) => {
+                          const numeric = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+                          const clamped = clampTimerValue("rematchDecisionSeconds", Number(numeric));
+                          setLobbyTimerSettings((prev) => ({
+                            ...prev,
+                            rematchDecisionSeconds: clamped,
+                          }));
+                          scheduleLobbyTimerSettingUpdate("rematchDecisionSeconds", clamped);
+                        }}
+                      />
+                      <span className="lobby-setting-row-value">{lobbyTimerSettings.rematchDecisionSeconds}s</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </Card>
