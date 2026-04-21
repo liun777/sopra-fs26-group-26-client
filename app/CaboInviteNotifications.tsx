@@ -3,11 +3,11 @@
 import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import type { ApplicationError } from "@/types/error";
+import type { User } from "@/types/user";
 import { usePathname, useRouter } from "next/navigation";
 import { getStompBrokerUrl } from "@/utils/domain";
 import { Client } from "@stomp/stompjs";
 import { Button, Space } from "antd";
-import SockJS from "sockjs-client";
 import { useCallback, useEffect, useState } from "react";
 
 type CaboInvitePending = {
@@ -66,36 +66,78 @@ export default function CaboInviteNotifications() {
   useEffect(() => {
     const t = token.trim();
     const uid = String(userId).trim();
-    if (isAuthRoute || !t || !uid) {
+    if (isAuthRoute || !t || !uid || typeof window === "undefined") {
       setPending([]);
       return;
     }
 
+    let stopped = false;
+    let client: Client | null = null;
+
     void loadPending();
 
-    const client = new Client({
-      webSocketFactory: () => new SockJS(getStompBrokerUrl()),
-      connectHeaders: { Authorization: t },
-      reconnectDelay: 5000,
-      onConnect: () => {
-        client.subscribe(`/topic/users/${uid}/invites`, () => {
+    const connectInvites = async () => {
+      const { default: SockJS } = await import("sockjs-client");
+      if (stopped) {
+        return;
+      }
+
+      client = new Client({
+        webSocketFactory: () => new SockJS(getStompBrokerUrl()),
+        connectHeaders: { Authorization: t },
+        reconnectDelay: 5000,
+        onConnect: () => {
+          client?.subscribe(`/topic/users/${uid}/invites`, () => {
+            void loadPending();
+          });
           void loadPending();
-        });
-        void loadPending();
-      },
-    });
-    client.activate();
+        },
+      });
+      client.activate();
+    };
+
+    void connectInvites();
     return () => {
-      void client.deactivate();
+      stopped = true;
+      if (client) {
+        void client.deactivate();
+      }
     };
   }, [token, userId, loadPending, isAuthRoute]);
 
   const current = pending[0];
 
+  const confirmLobbySwitchIfNeeded = useCallback(async (): Promise<boolean> => {
+    const t = token.trim();
+    const uid = String(userId).trim();
+    if (!t || !uid || typeof window === "undefined") {
+      return true;
+    }
+
+    try {
+      const me = await api.getWithAuth<User>(`/users/${encodeURIComponent(uid)}`, t);
+      const status = String(me?.status ?? "").trim().toUpperCase();
+      if (status !== "LOBBY") {
+        return true;
+      }
+      return window.confirm(
+        "You are already in a lobby. Accepting this invite will leave your current lobby. Continue?",
+      );
+    } catch {
+      return true;
+    }
+  }, [api, token, userId]);
+
   const onDecision = async (decision: "ACCEPT" | "DECLINE") => {
     const t = token.trim();
     const uid = String(userId).trim();
     if (!t || !current || !uid) return;
+    if (decision === "ACCEPT") {
+      const confirmed = await confirmLobbySwitchIfNeeded();
+      if (!confirmed) {
+        return;
+      }
+    }
     setResponding(true);
     try {
       const body = await api.patchWithAuth<InviteRespondBody>(

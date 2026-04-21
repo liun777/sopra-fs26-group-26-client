@@ -11,6 +11,7 @@ import { getStompBrokerUrl } from "@/utils/domain";
 import { Client } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 import type { User } from "@/types/user";
+import { useRouter } from "next/navigation";
 
 interface Card {
     value: number;
@@ -383,7 +384,8 @@ function toValidCardOrNull(candidate: unknown): Card | null {
 
 const Game = () => {
   const apiService = useApi();
-  const { value: activeSessionId } = useLocalStorage<string>("activeSessionId", "");
+  const router = useRouter();
+  const { value: activeSessionId, set: setActiveSessionId } = useLocalStorage<string>("activeSessionId", "");
   const gameId = activeSessionId.trim();
   const HAND_SIZE = 4; // referencing here, keeps it consistent and less prone to errors
   const TURN_CARD_DRAG_MIME = "application/x-cabo-turn-card";
@@ -427,12 +429,14 @@ const Game = () => {
       const { value: pendingInitialPeekGameId, clear: clearPendingInitialPeekGameId } =
           useLocalStorage<string>("pendingInitialPeekGameId", "");
       const [gameStatus, setGameStatus] = useState<string>("");
+      const isAwaitingRematchDecision = gameStatus === "round_awaiting_rematch";
       const [myHand, setMyHand] = useState<Card[]>([]);
       const [selectedPeekIndices, setSelectedPeekIndices] = useState<number[]>([]);
       const [isSubmittingInitialPeek, setIsSubmittingInitialPeek] = useState<boolean>(false);
       const revealedPeekCount = peekVisibleCards.filter(Boolean).length;
       //#19 Add a visual timer/progress bar that syncs with the backend to warn the player of expiring time
       const TURN_DURATION = 30;
+      const [rematchDecisionDuration, setRematchDecisionDuration] = useState<number>(60);
       // #20
       const [drawnCard, setDrawnCard] = useState<Card | null>(null);
       const [selectedDrawSource, setSelectedDrawSource] = useState<"draw_pile" | "discard_pile" | null>(null);
@@ -470,6 +474,10 @@ const Game = () => {
       const [playerNamesById, setPlayerNamesById] = useState<Record<number, string>>({});
       const [currentTurnUserId, setCurrentTurnUserId] = useState<number | null>(null);
       const [turnTimeLeft, setTurnTimeLeft] = useState<number>(TURN_DURATION);
+      const [isCallingCabo, setIsCallingCabo] = useState<boolean>(false);
+      const [isSubmittingRematchDecision, setIsSubmittingRematchDecision] = useState<boolean>(false);
+      const [rematchCountdown, setRematchCountdown] = useState<number>(0);
+      const [myRematchDecision, setMyRematchDecision] = useState<boolean | null>(null);
 
       const parsedSelfUserId = Number(userId);
       const selfUserId = userId.trim() !== "" && Number.isFinite(parsedSelfUserId)
@@ -942,6 +950,76 @@ const Game = () => {
           };
       }, [apiService, tablePlayerIds, playerNamesById]);
 
+      useEffect(() => {
+          if (!isAwaitingRematchDecision || !gameId || !token) {
+              setRematchCountdown(0);
+              setMyRematchDecision(null);
+              return;
+          }
+
+          let active = true;
+          const loadRematchConfig = async () => {
+              try {
+                  const response = await apiService.getWithAuth<{ decisionSeconds?: number }>(
+                      `/games/${gameId}/rematch/config`,
+                      token
+                  );
+                  const configuredSeconds = Number(response?.decisionSeconds);
+                  if (active && Number.isFinite(configuredSeconds) && configuredSeconds > 0) {
+                      setRematchDecisionDuration(Math.floor(configuredSeconds));
+                  }
+              } catch {
+                  // fallback to last known local default
+              }
+          };
+          void loadRematchConfig();
+
+          setRematchCountdown(rematchDecisionDuration);
+          const intervalId = window.setInterval(() => {
+              setRematchCountdown((previous) => (previous <= 1 ? 0 : previous - 1));
+          }, 1000);
+
+          return () => {
+              active = false;
+              window.clearInterval(intervalId);
+          };
+      }, [apiService, gameId, token, isAwaitingRematchDecision, rematchDecisionDuration]);
+
+      useEffect(() => {
+          if (gameStatus !== "round_ended" || !gameId || !token) {
+              return;
+          }
+
+          let active = true;
+          const navigateAfterRound = async () => {
+              try {
+                  const response = await apiService.getWithAuth<{ sessionId?: string }>(
+                      `/games/${gameId}/post-round-lobby`,
+                      token
+                  );
+                  if (!active) {
+                      return;
+                  }
+                  const waitingSessionId = String(response?.sessionId ?? "").trim();
+                  if (waitingSessionId) {
+                      setActiveSessionId(waitingSessionId);
+                      router.replace(`/lobby/${encodeURIComponent(waitingSessionId)}`);
+                      return;
+                  }
+                  router.replace("/dashboard");
+              } catch {
+                  if (active) {
+                      router.replace("/dashboard");
+                  }
+              }
+          };
+
+          void navigateAfterRound();
+          return () => {
+              active = false;
+          };
+      }, [apiService, gameStatus, gameId, token, router, setActiveSessionId]);
+
       const isAbilityPhaseForCountdown =
           gameStatus === "ability_peek_self" ||
           gameStatus === "ability_peek_opponent" ||
@@ -953,7 +1031,7 @@ const Game = () => {
       const showCenterTurnCountdown =
           showTurnCountdown && selfUserId != null && currentTurnUserId === selfUserId;
       const isCurrentTurnMine = selfUserId != null && currentTurnUserId === selfUserId;
-      const isMyTurnUi = isCurrentTurnMine && !isPeekPhase;
+      const isMyTurnUi = isCurrentTurnMine && !isPeekPhase && !isAwaitingRematchDecision;
       useEffect(() => {
           if (!showTurnCountdown) {
               setTurnTimeLeft(TURN_DURATION);
@@ -1670,6 +1748,55 @@ const skipAbilityChoice = () => {
     });
 };
 
+const canCallCabo =
+    isCurrentTurnMine &&
+    isRoundActive &&
+    !isPeekPhase &&
+    !isAbilityPending &&
+    !drawnCard &&
+    !isDrawingFromPile &&
+    !isDrawingFromDiscardPile &&
+    !isSwappingDrawnCard &&
+    !isDiscardingDrawnCard &&
+    !isCallingCabo &&
+    !isAwaitingRematchDecision;
+
+const callCabo = () => {
+    if (!canCallCabo || !gameId || !token) {
+        return;
+    }
+
+    setIsCallingCabo(true);
+    void apiService.postWithAuth<void>(
+        `/games/${gameId}/moves/cabo`,
+        {},
+        token
+    ).catch((error) => {
+        console.error("Failed to call Cabo:", error);
+    }).finally(() => {
+        setIsCallingCabo(false);
+    });
+};
+
+const submitRematchChoice = (rematch: boolean) => {
+    if (!isAwaitingRematchDecision || !gameId || !token || isSubmittingRematchDecision || myRematchDecision !== null) {
+        return;
+    }
+
+    setIsSubmittingRematchDecision(true);
+    void apiService.postWithAuth<void>(
+        `/games/${gameId}/rematch/decision`,
+        { rematch },
+        token
+    ).then(() => {
+        setMyRematchDecision(rematch);
+    }).catch((error) => {
+        console.error("Failed to submit rematch decision:", error);
+    }).finally(() => {
+        setIsSubmittingRematchDecision(false);
+    });
+};
+
 useEffect(() => {
     if (!drawnCard && !isDrawingFromPile && !isDrawingFromDiscardPile) {
         setSelectedDrawSource(null);
@@ -1774,6 +1901,45 @@ const playerListRows = tablePlayerIds.map((id) => {
                           </div>
                       ))}
                   </div>
+
+                  {isAwaitingRematchDecision && (
+                      <div className="game-rematch-overlay" role="dialog" aria-modal="true" aria-live="polite">
+                          <div className="game-rematch-card">
+                              <h2 className="game-rematch-title">Round Finished</h2>
+                              <p className="game-rematch-text">
+                                  Rematch decision closes in{" "}
+                                  <span className="game-rematch-countdown">{rematchCountdown}s</span>
+                              </p>
+                              <p className="game-rematch-subtext">
+                                  Choose now. If at least 2 players choose rematch, a new lobby is created for them.
+                              </p>
+                              {myRematchDecision != null && (
+                                  <p className="game-rematch-choice">
+                                      You chose: {myRematchDecision ? "Rematch" : "No Rematch"}.
+                                      Waiting for other players...
+                                  </p>
+                              )}
+                              <div className="game-rematch-actions">
+                                  <Button
+                                      type={myRematchDecision === true ? "primary" : "default"}
+                                      disabled={myRematchDecision !== null || isSubmittingRematchDecision}
+                                      loading={isSubmittingRematchDecision && myRematchDecision === null}
+                                      onClick={() => submitRematchChoice(true)}
+                                  >
+                                      Rematch
+                                  </Button>
+                                  <Button
+                                      type={myRematchDecision === false ? "primary" : "default"}
+                                      danger
+                                      disabled={myRematchDecision !== null || isSubmittingRematchDecision}
+                                      onClick={() => submitRematchChoice(false)}
+                                  >
+                                      No Rematch
+                                  </Button>
+                              </div>
+                          </div>
+                      </div>
+                  )}
 
                   {isPeekPhase && (
                       <div className="peek-phase-overlay" aria-hidden="true">
@@ -2057,7 +2223,14 @@ const playerListRows = tablePlayerIds.map((id) => {
                   {/* Buttons are only active if it is users turn */}
                   <div className="top-right-buttons">
                       <Button disabled={!isMyTurnUi}>Scores</Button>
-                      <Button type="primary" disabled={!isMyTurnUi}>Call Cabo</Button>
+                      <Button
+                          type="primary"
+                          disabled={!canCallCabo}
+                          loading={isCallingCabo}
+                          onClick={callCabo}
+                      >
+                          Call Cabo
+                      </Button>
                   </div>
 
                   {/* Bottom cards are only itneractable when its users turn*/}

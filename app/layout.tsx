@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { App as AntdApp, ConfigProvider, theme } from "antd";
 import { AntdRegistry } from "@ant-design/nextjs-registry";
 import CaboInviteNotifications from "./CaboInviteNotifications";
+import GameReconnectPrompt from "./GameReconnectPrompt";
 import "@/styles/globals.css";
 import DisconnectHandler from "./components/DisconnectHandler";
 
@@ -65,6 +66,7 @@ export default function RootLayout({
           <AntdRegistry>
             <AntdApp>
               <DisconnectHandler />
+              <GameReconnectPrompt />
               <CaboInviteNotifications />
               {children}
             </AntdApp>

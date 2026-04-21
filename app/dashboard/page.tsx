@@ -11,7 +11,6 @@ import { getStompBrokerUrl } from "@/utils/domain";
 import { User } from "@/types/user";
 import { Button, Card } from "antd";
 import { Client } from "@stomp/stompjs";
-import SockJS from "sockjs-client";
 
 // Simple 3 variant dynamic greetings on Dashboard
 type GreetingSlot = "morning" | "day" | "afternoon" | "evening" | "night";
@@ -112,33 +111,48 @@ const Dashboard = () => {
 
   useEffect(() => {
     const authToken = normalizedToken;
-    if (!authToken) {
+    if (!authToken || typeof window === "undefined") {
       setLiveConnected(false);
       return;
     }
 
-    const client = new Client({
-      webSocketFactory: () => new SockJS(getStompBrokerUrl()),
-      connectHeaders: { Authorization: authToken },
-      reconnectDelay: 5000,
-      onConnect: () => {
-        setLiveConnected(true);
-      },
-      onStompError: () => {
-        setLiveConnected(false);
-      },
-      onWebSocketClose: () => {
-        setLiveConnected(false);
-      },
-      onWebSocketError: () => {
-        setLiveConnected(false);
-      },
-    });
+    let stopped = false;
+    let client: Client | null = null;
 
-    client.activate();
+    const connectLiveUpdates = async () => {
+      const { default: SockJS } = await import("sockjs-client");
+      if (stopped) {
+        return;
+      }
+
+      client = new Client({
+        webSocketFactory: () => new SockJS(getStompBrokerUrl()),
+        connectHeaders: { Authorization: authToken },
+        reconnectDelay: 5000,
+        onConnect: () => {
+          setLiveConnected(true);
+        },
+        onStompError: () => {
+          setLiveConnected(false);
+        },
+        onWebSocketClose: () => {
+          setLiveConnected(false);
+        },
+        onWebSocketError: () => {
+          setLiveConnected(false);
+        },
+      });
+
+      client.activate();
+    };
+
+    void connectLiveUpdates();
     return () => {
+      stopped = true;
       setLiveConnected(false);
-      void client.deactivate();
+      if (client) {
+        void client.deactivate();
+      }
     };
   }, [normalizedToken]);
 

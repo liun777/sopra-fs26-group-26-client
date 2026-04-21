@@ -176,6 +176,7 @@ const LobbyJoin = () => {
     const router = useRouter();
     const api = useApi();
     const { value: token } = useLocalStorage<string>("token", "");
+    const { value: userId } = useLocalStorage<string>("userId", "");
 
     const [code, setCode] = useState("");
     const [loadingCode, setLoadingCode] = useState(false);
@@ -187,6 +188,7 @@ const LobbyJoin = () => {
     const [hostUsernamesById, setHostUsernamesById] = useState<Record<string, string>>({});
 
     const authToken = token.trim();
+    const normalizedUserId = String(userId).trim();
 
     const loadOpenLobbies = useCallback(async () => {
         if (!authToken) {
@@ -264,11 +266,51 @@ const LobbyJoin = () => {
         router.push("/dashboard");
     };
 
+    const confirmLobbySwitchIfNeeded = useCallback(async (targetSessionId: string): Promise<boolean> => {
+        if (!authToken || !normalizedUserId || typeof window === "undefined") {
+            return true;
+        }
+
+        try {
+            const me = await api.getWithAuth<User>(
+                `/users/${encodeURIComponent(normalizedUserId)}`,
+                authToken,
+            );
+            const status = String(me?.status ?? "").trim().toUpperCase();
+            if (status !== "LOBBY") {
+                return true;
+            }
+
+            // Avoid prompting if user is simply re-entering their own waiting lobby.
+            try {
+                const mine = await api.getWithAuth<LobbyGetDTO>("/lobbies/my/waiting", authToken);
+                const mineSessionId = String(mine?.sessionId ?? "").trim().toUpperCase();
+                const target = String(targetSessionId ?? "").trim().toUpperCase();
+                if (mineSessionId && target && mineSessionId === target) {
+                    return true;
+                }
+            } catch {
+                // User is likely not host; keep generic confirmation.
+            }
+
+            return window.confirm(
+                "You are already in a lobby. Joining another lobby will leave your current lobby. Continue?",
+            );
+        } catch {
+            // If we cannot determine status, do not block join flow.
+            return true;
+        }
+    }, [api, authToken, normalizedUserId]);
+
     const handleJoinLobby = async (
         sessionId: string,
         loadingSetter?: (loading: boolean) => void,
     ) => {
         if (!sessionId.trim() || !authToken) return;
+        const confirmed = await confirmLobbySwitchIfNeeded(sessionId.trim());
+        if (!confirmed) {
+            return;
+        }
         loadingSetter?.(true);
         setJoiningSessionId(sessionId);
         try {

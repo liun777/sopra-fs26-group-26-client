@@ -44,8 +44,12 @@ export function useOnlineUsersTopic(): User[] {
 
   useEffect(() => {
     let cancelled = false;
+    let wsConnected = false;
 
     const refreshFromRest = async () => {
+      if (wsConnected) {
+        return;
+      }
       try {
         const all = await api.get<User[]>("/users");
         if (!cancelled) {
@@ -72,12 +76,22 @@ export function useOnlineUsersTopic(): User[] {
         connectHeaders: { Authorization: t },
         reconnectDelay: 5000,
         onConnect: () => {
+          wsConnected = true;
           client?.subscribe("/topic/users/online", (msg: IMessage) => {
             if (cancelled) return;
             try {
               if (msg.body) setOnlineUsers(parseOnlineUsersJson(msg.body));
             } catch {}
           });
+        },
+        onStompError: () => {
+          wsConnected = false;
+        },
+        onWebSocketClose: () => {
+          wsConnected = false;
+        },
+        onWebSocketError: () => {
+          wsConnected = false;
         },
       });
       client.activate();
@@ -104,6 +118,7 @@ export function useOnlineUsersTopic(): User[] {
 
     return () => {
       cancelled = true;
+      wsConnected = false;
       clearInterval(pollId);
       if (client) {
         void client.deactivate();

@@ -27,7 +27,17 @@ export default function DisconnectHandler() {
 
         // then every 30 seconds
         const id = setInterval(() => void sendHeartbeat(), 30000);
-        return () => clearInterval(id);
+        const sendHeartbeatOnFocus = () => {
+            void sendHeartbeat();
+        };
+
+        window.addEventListener("focus", sendHeartbeatOnFocus);
+        document.addEventListener("visibilitychange", sendHeartbeatOnFocus);
+        return () => {
+            clearInterval(id);
+            window.removeEventListener("focus", sendHeartbeatOnFocus);
+            document.removeEventListener("visibilitychange", sendHeartbeatOnFocus);
+        };
     }, [token]);
 
     return null;

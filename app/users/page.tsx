@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { User } from "@/types/user";
 import { PresenceKey, toPresenceKey, toPresenceLabel } from "@/utils/presence";
@@ -100,6 +101,7 @@ const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<User[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 1000);
   const [liveConnected, setLiveConnected] = useState(false);
 
   const fetchUsers = useCallback(async () => {
@@ -190,7 +192,7 @@ const UsersPage: React.FC = () => {
     [users, userId],
   );
 
-  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
   const filteredUsers =
     rows?.filter((user) => {
       if (!normalizedSearch) {

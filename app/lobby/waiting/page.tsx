@@ -1,6 +1,7 @@
 "use client";
 
 import { useApi } from "@/hooks/useApi";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { useOnlineUsersTopic } from "@/hooks/useOnlineUsersTopic";
 import {
@@ -16,7 +17,6 @@ import { Button, Card, Collapse, Input, List, Popconfirm, Spin, Switch, Typograp
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import SockJS from "sockjs-client";
 
 type WaitingRow = {
   username: string;
@@ -39,6 +39,10 @@ type GameStateSignal = {
   status?: string | null;
   gameStatus?: string | null;
   phase?: string | null;
+};
+
+type ActiveGameResponse = {
+  gameId?: string | null;
 };
 
 type Player = {
@@ -114,7 +118,7 @@ function extractGameStatus(value: unknown): string {
 }
 
 function canInvitePresence(presence: PresenceKey): boolean {
-  return presence === "online";
+  return presence === "online" || presence === "lobby";
 }
 
 function countActiveInvites(sentEntries: Record<string, CaboSentInviteEntry>) {
@@ -278,6 +282,7 @@ function WaitingLobbyContent() {
   const api = useApi();
   const { value: token } = useLocalStorage<string>("token", "");
   const { value: userId } = useLocalStorage<string>("userId", "");
+  const normalizedUserId = String(userId).trim();
   const { set: setActiveSessionId } = useLocalStorage<string>("activeSessionId", "");
   const { set: setPendingInitialPeekGameId } = useLocalStorage<string>("pendingInitialPeekGameId", "");
   const onlineUsers = useOnlineUsersTopic();
@@ -296,9 +301,10 @@ function WaitingLobbyContent() {
     Record<string, boolean>
   >({});
   const [inviteSearch, setInviteSearch] = useState("");
+  const debouncedInviteSearch = useDebouncedValue(inviteSearch, 1000);
   const [readyByUsername, setReadyByUsername] = useState<Record<string, boolean>>({});
   const [startingGame, setStartingGame] = useState(false);
-  const [launchingGame, setLaunchingGame] = useState(false);
+  const [, setLaunchingGame] = useState(false);
 
   const launchToGame = useCallback((rawGameId: unknown, rawStatus?: string, forceInitialPeekBootstrap = false) => {
     const gameId = String(rawGameId ?? "").trim();
@@ -318,6 +324,25 @@ function WaitingLobbyContent() {
       return true;
     });
   }, [router, setActiveSessionId, setPendingInitialPeekGameId]);
+
+  const tryLaunchFromActiveGameFallback = useCallback(async () => {
+    const authToken = token.trim();
+    if (!authToken) {
+      return;
+    }
+    try {
+      const activeGame = await api.getWithAuth<ActiveGameResponse>(
+        "/games/active",
+        authToken,
+      );
+      const activeGameId = extractGameId(activeGame);
+      if (activeGameId) {
+        launchToGame(activeGameId, "initial_peek");
+      }
+    } catch {
+      // ignore temporary lookup failures
+    }
+  }, [api, launchToGame, token]);
 
   useEffect(() => {
     const sessionId = sessionIdParam.trim();
@@ -354,6 +379,30 @@ function WaitingLobbyContent() {
         /* no waiting lobby yet */
       }
 
+      if (normalizedUserId && typeof window !== "undefined") {
+        try {
+          const me = await api.getWithAuth<User>(
+            `/users/${encodeURIComponent(normalizedUserId)}`,
+            authToken,
+          );
+          const status = String(me?.status ?? "").trim().toUpperCase();
+          if (status === "LOBBY") {
+            const confirmed = window.confirm(
+              "You are already in a lobby. Creating a new lobby will leave your current lobby. Continue?",
+            );
+            if (!confirmed) {
+              if (active) {
+                setLoading(false);
+                setError("Lobby switch canceled.");
+              }
+              return;
+            }
+          }
+        } catch {
+          // If status lookup fails, continue with create flow.
+        }
+      }
+
       try {
         const created = await api.postWithAuth<LobbySession>(
           "/lobbies",
@@ -367,10 +416,16 @@ function WaitingLobbyContent() {
         if (active) {
           router.replace(`/lobby/${encodeURIComponent(createdSessionId)}`);
         }
-      } catch {
+      } catch (error: unknown) {
         if (active) {
+          const status = (error as ApplicationError)?.status;
+          const message = error instanceof Error ? error.message : "";
           setView(null);
-          setError("Could not open lobby.");
+          if (status === 409 && message.includes("active lobby")) {
+            setError("You already have an active lobby or game. Leave it first, then create a new one.");
+          } else {
+            setError("Could not open lobby.");
+          }
           setLoading(false);
         }
       }
@@ -381,7 +436,7 @@ function WaitingLobbyContent() {
     return () => {
       active = false;
     };
-  }, [api, router, sessionIdParam, token]);
+  }, [api, normalizedUserId, router, sessionIdParam, token]);
 
   const loadView = useCallback(async () => {
     const authToken = token.trim();
@@ -456,50 +511,68 @@ function WaitingLobbyContent() {
     const authToken = token.trim();
     const sessionId = sessionIdParam.trim();
 
-    if (!authToken || !sessionId) {
+    if (!authToken || !sessionId || typeof window === "undefined") {
       setLobbyWsConnected(false);
       return;
     }
 
+    let stopped = false;
+    let client: Client | null = null;
+
     setLobbyWsConnected(false);
     void loadView();
+    void tryLaunchFromActiveGameFallback();
 
-    const client = new Client({
-      webSocketFactory: () => new SockJS(getStompBrokerUrl()),
-      connectHeaders: { Authorization: authToken },
-      reconnectDelay: 5000,
-      onConnect: () => {
-        setLobbyWsConnected(true);
-        client.subscribe(`/topic/lobby/session/${sessionId}`, () => {
+    const connectLobbyTopic = async () => {
+      const { default: SockJS } = await import("sockjs-client");
+      if (stopped) {
+        return;
+      }
+
+      client = new Client({
+        webSocketFactory: () => new SockJS(getStompBrokerUrl()),
+        connectHeaders: { Authorization: authToken },
+        reconnectDelay: 5000,
+        onConnect: () => {
+          setLobbyWsConnected(true);
+          client?.subscribe(`/topic/lobby/session/${sessionId}`, () => {
+            void loadView();
+            void tryLaunchFromActiveGameFallback();
+          });
+          client?.subscribe("/user/queue/game-state", (message) => {
+            try {
+              const payload = JSON.parse(String(message.body ?? "{}")) as GameStateSignal;
+              launchToGame(extractGameId(payload), extractGameStatus(payload));
+            } catch {
+              /* ignore malformed payload */
+            }
+          });
           void loadView();
-        });
-        client.subscribe("/user/queue/game-state", (message) => {
-          try {
-            const payload = JSON.parse(String(message.body ?? "{}")) as GameStateSignal;
-            launchToGame(extractGameId(payload), extractGameStatus(payload));
-          } catch {
-            /* ignore malformed payload */
-          }
-        });
-        void loadView();
-      },
-      onStompError: () => {
-        setLobbyWsConnected(false);
-      },
-      onWebSocketClose: () => {
-        setLobbyWsConnected(false);
-      },
-      onWebSocketError: () => {
-        setLobbyWsConnected(false);
-      },
-    });
+          void tryLaunchFromActiveGameFallback();
+        },
+        onStompError: () => {
+          setLobbyWsConnected(false);
+        },
+        onWebSocketClose: () => {
+          setLobbyWsConnected(false);
+        },
+        onWebSocketError: () => {
+          setLobbyWsConnected(false);
+        },
+      });
 
-    client.activate();
-    return () => {
-      setLobbyWsConnected(false);
-      void client.deactivate();
+      client.activate();
     };
-  }, [token, sessionIdParam, loadView, launchToGame]);
+
+    void connectLobbyTopic();
+    return () => {
+      stopped = true;
+      setLobbyWsConnected(false);
+      if (client) {
+        void client.deactivate();
+      }
+    };
+  }, [token, sessionIdParam, loadView, launchToGame, tryLaunchFromActiveGameFallback]);
 
   useEffect(() => {
     const authToken = token.trim();
@@ -512,12 +585,13 @@ function WaitingLobbyContent() {
     const pollId = setInterval(() => {
       void loadView();
       void loadSent();
+      void tryLaunchFromActiveGameFallback();
     }, pollMs);
 
     return () => {
       clearInterval(pollId);
     };
-  }, [token, sessionIdParam, loadView, loadSent, lobbyWsConnected]);
+  }, [token, sessionIdParam, loadView, loadSent, lobbyWsConnected, tryLaunchFromActiveGameFallback]);
 
   const waitingPlayers = useMemo(
     () =>
@@ -601,7 +675,7 @@ function WaitingLobbyContent() {
   );
 
   const filteredInviteRows = useMemo(() => {
-    const query = normalizeValue(inviteSearch);
+    const query = normalizeValue(debouncedInviteSearch);
     return inviteRows
       .filter((player) => !player.isSelf)
       .filter((player) => !usernamesAlreadyInLobby.has(normalizeValue(player.name)))
@@ -617,7 +691,7 @@ function WaitingLobbyContent() {
         }
         return normalizeValue(player.name).includes(query);
       });
-  }, [inviteRows, inviteSearch, usernamesAlreadyInLobby]);
+  }, [inviteRows, debouncedInviteSearch, usernamesAlreadyInLobby]);
 
   const activeInviteCount = countActiveInvites(sentEntries);
 
@@ -781,8 +855,11 @@ function WaitingLobbyContent() {
       }
     } catch (error: unknown) {
       const status = (error as ApplicationError)?.status;
+      const message = error instanceof Error ? error.message : "";
       if (status === 409) {
         alert("Could not start game. Lobby is not ready.");
+      } else if (status === 400 && message.toLowerCase().includes("player disconnected")) {
+        alert("Could not start game. A player appears disconnected. Ask everyone to reopen the lobby page.");
       } else {
         alert(
           status
