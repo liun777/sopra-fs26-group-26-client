@@ -125,6 +125,8 @@ reason).
 | **suisu-IT-daigakusei** | 19.04.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/6084ff308fa7317033f9d90273fd8719036f005f | #21 Implementation | UI clicks/drag-and-drop cards  |
 | **suisu-IT-daigakusei** | 19.04.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/f1ebf8b734fa99349945433b8f293a4f50edfd12 | #18 Implementation | Visual polish showing cards moving between the deck, hand, and discard pile. |
 | **suisu-IT-daigakusei** | 19.04.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/d73ae262019688207fe653954cc7203502e73179 | #24, #27, #29 Implementation | Frontend Swap, Peek functionality + ability buttons  |
+| **suisu-IT-daigakusei** | 21.04.2026 | https://github.com/liun777/sopra-fs26-group-26-server/commit/a1f8a39b04c028c3caaf620311366be8aeb26db1 https://github.com/liun777/sopra-fs26-group-26-server/commit/a7fea637c2e5e439813ed1b74e92e26594e46737 https://github.com/liun777/sopra-fs26-group-26-server/commit/a3e86266809a11f00d44f2cba882f98a618d06e2 | (Fix) WebSocket Issues | Note: This is a massive contribution ... 95% fixed, it should terminate connections if unused, end games automatically if a player is afk/dc'd too long, autologout had to implement unfinished rematch, cabo functionality so one can leave the game properly, reconnect has been implemented (#39), confirmation when calling cabo (#30), and partial implementation of visual indicator of cabo called but that needs further visual/text tweaking (#32), implemented for testing slides in the lobby so one can change the timers etc. seeing if the game syncs properly. There is more stuff, but I have lost the overview ... |
+
 ---
 
 ## Contributions Week 5 - [Begin Date] to [End Date]
