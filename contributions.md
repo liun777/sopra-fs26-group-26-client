@@ -129,9 +129,10 @@ reason).
 
 ---
 
-## Contributions Week 5 - [Begin Date] to [End Date]
-
-_Continue with the same table format as above._
+## Contributions Week 5 - [22.04.2026] to [28.04.2026]
+| **Student**        | **Date** | **Link to Commit** | **Description**                 | **Relevance**                       |
+| ------------------ | -------- | ------------------ | ------------------------------- | ----------------------------------- |
+| **@uIiana** | 22.04.2026   | https://github.com/liun777/sopra-fs26-group-26-server/commit/140555d7fc80399d9886477ca204c7281eda3520 |  Functionality is already implemented. Wrote 7 GameService tests: <br> - verifyMoveCallerIsCurrentPlayer() throws forbidden for cabo caller <br> - cabo caller trying to execute moveDrawFromDiscardPile() throws forbidden <br> - cabo caller trying to execute moveSwapWithDiscardPile() throws forbidden <br> - cabo caller trying to execute moveSwapDrawnCard() throws forbidden <br> - cabo caller trying to execute moveAbilitySwap() throws forbidden <br> - cabo caller trying to execute skipAbility() throws forbidden <br> - not the cabo caller (valid current player) can execute moveDrawFromDiscardPile() after cabo is called <br><br>Closes [#83](https://github.com/liun777/sopra-fs26-group-26-server/issues/83) | Extensive testing of the scenario from [#83](https://github.com/liun777/sopra-fs26-group-26-server/issues/83): after calling cabo the player cannot execute functionality related to draw / swap moves  |
 
 ---
 
