@@ -122,9 +122,9 @@ reason).
 | **@janagraf** | 20.04.2026 | (https://github.com/liun777/sopra-fs26-group-26-server/commit/ab57c86f6ce4b4952f0717eb5e40b41dc488219d) (https://github.com/liun777/sopra-fs26-group-26-server/commit/a233c697247e7382f51177019cea62ac2badfe41) (https://github.com/liun777/sopra-fs26-group-26-client/commit/378ee111fb87988ae906bfc0ec03d9990423b639) | Added POST /games/{gameId}/drawn-card/discard endpoint and POST /games/{gameId}/abilities/skip endpoint to GameController. These allow the frontend to discard a drawn card and skip an ability phase respectively | Core Feature: Without this players are permanently stuck in lobbies and hosts cannot manage their lobby before a game starts. |
 | **@janagraf** | 21.04.2026 | https://github.com/liun777/sopra-fs26-group-26-server/commit/6693a053e83252fd7070aaa9a313f7c54bfe7eb6 | Verified that advanceTurnToNextPlayer correctly counts N-1 turns after isCaboCalled is set and transitions the game to ROUND_ENDED. Also restricted special peek to one card per ability phase by adding specialPeekUsed flag to Game.java and checking/resetting it in applySpecialPeek, completeAbilityPhaseAndAdvance and skipAbility | Without the turn counter, the game would never end after Cabo is called. Without the peek restriction, players could peek at all their cards during a single ability phase, breaking the game balance. |
 | **@janagraf** | 21.04.2026 | https://github.com/liun777/sopra-fs26-group-26-server/commit/ec0cfae2a13bd2f9171db64f8d38caa4905a4abd| Add tests for backend task I did in the past weeks. | Ensures enough code is covered by tests. |
-| **suisu-IT-daigakusei** | 19.04.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/6084ff308fa7317033f9d90273fd8719036f005f | #21 Implementatio | UI clicks/drag-and-drop cards  |
-
-
+| **suisu-IT-daigakusei** | 19.04.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/6084ff308fa7317033f9d90273fd8719036f005f | #21 Implementation | UI clicks/drag-and-drop cards  |
+| **suisu-IT-daigakusei** | 19.04.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/f1ebf8b734fa99349945433b8f293a4f50edfd12 | #18 Implementation | Visual polish showing cards moving between the deck, hand, and discard pile. |
+| **suisu-IT-daigakusei** | 19.04.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/d73ae262019688207fe653954cc7203502e73179 | #24, #27, #29 Implementation | Frontend Swap, Peek functionality + ability buttons  |
 ---
 
 ## Contributions Week 5 - [Begin Date] to [End Date]
