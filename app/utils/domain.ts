@@ -20,7 +20,7 @@ export function getApiDomain(): string {
   }
 
   const prodUrl = process.env.NEXT_PUBLIC_PROD_API_URL?.trim() ||
-    "https://sopra-fs26-group-26-server.oa.r.appspot.com";
+    "https://scientific-crow-494106-c4.oa.r.appspot.com";
   const devUrl = "http://localhost:8080";
   return isProduction() ? prodUrl : devUrl;
 }
