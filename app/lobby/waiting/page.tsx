@@ -1300,15 +1300,17 @@ function WaitingLobbyContent() {
             >
               <div className="create-lobby-actions">
                 <div className="lobby-settings-list">
-                  <div className="lobby-setting-row">
+                  <div className="lobby-setting-row lobby-setting-row-toggle">
                     <span className="lobby-setting-row-label">Invite only</span>
-                    <Switch
-                      className="lobby-private-switch"
-                      checked={!isPublicLobby}
-                      onChange={handlePrivacyToggle}
-                      checkedChildren="Yes"
-                      unCheckedChildren="No"
-                    />
+                    <div className="lobby-setting-row-control lobby-setting-row-control-toggle">
+                      <Switch
+                        className="lobby-private-switch"
+                        checked={!isPublicLobby}
+                        onChange={handlePrivacyToggle}
+                        checkedChildren="Yes"
+                        unCheckedChildren="No"
+                      />
+                    </div>
                   </div>
                   <div className="lobby-setting-row">
                     <span className="lobby-setting-row-label">AFK Timeout (sec)</span>
@@ -1418,33 +1420,6 @@ function WaitingLobbyContent() {
                         }}
                       />
                       <span className="lobby-setting-row-value">{lobbyTimerSettings.abilityRevealSeconds}s</span>
-                    </div>
-                  </div>
-                  <div className="lobby-setting-row">
-                    <span className="lobby-setting-row-label">Rematch Decision (sec)</span>
-                    <div className="lobby-setting-row-control">
-                      <Slider
-                        min={TIMER_LIMITS.rematchDecisionSeconds.min}
-                        max={TIMER_LIMITS.rematchDecisionSeconds.max}
-                        step={1}
-                        marks={{
-                          [TIMER_LIMITS.rematchDecisionSeconds.min]: String(TIMER_LIMITS.rematchDecisionSeconds.min),
-                          30: "30",
-                          [TIMER_LIMITS.rematchDecisionSeconds.max]: String(TIMER_LIMITS.rematchDecisionSeconds.max),
-                        }}
-                        value={lobbyTimerSettings.rematchDecisionSeconds}
-                        disabled={updatingTimerKey === "rematchDecisionSeconds"}
-                        onChange={(nextValue) => {
-                          const numeric = Array.isArray(nextValue) ? nextValue[0] : nextValue;
-                          const clamped = clampTimerValue("rematchDecisionSeconds", Number(numeric));
-                          setLobbyTimerSettings((prev) => ({
-                            ...prev,
-                            rematchDecisionSeconds: clamped,
-                          }));
-                          scheduleLobbyTimerSettingUpdate("rematchDecisionSeconds", clamped);
-                        }}
-                      />
-                      <span className="lobby-setting-row-value">{lobbyTimerSettings.rematchDecisionSeconds}s</span>
                     </div>
                   </div>
                 </div>

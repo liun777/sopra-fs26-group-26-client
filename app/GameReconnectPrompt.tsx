@@ -150,13 +150,13 @@ export default function GameReconnectPrompt() {
         return;
       }
 
-      const isPlaying = next.status === "PLAYING";
+      const isPlaying = Boolean(next.gameId);
       setIsPlayingOnServer(isPlaying);
 
       if (next.gameId) {
         setServerGameId(next.gameId);
         setActiveSessionId(next.gameId);
-      } else if (!isPlaying) {
+      } else {
         setServerGameId("");
       }
     };

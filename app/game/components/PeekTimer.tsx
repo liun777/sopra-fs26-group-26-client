@@ -15,24 +15,27 @@ const PeekTimer: React.FC<PeekTimerProps> = ({
     onComplete,
 }) => {
     const [timeLeft, setTimeLeft] = useState(duration);
+    const [deadlineMs, setDeadlineMs] = useState<number>(() => Date.now() + (duration * 1000));
 
     useEffect(() => {
         setTimeLeft(duration);
+        setDeadlineMs(Date.now() + (duration * 1000));
     }, [duration]);
 
     useEffect(() => {
-        if (timeLeft <= 0) {
-            onComplete?.();
-            return;
-        }
+        const tick = () => {
+            const remainingMs = Math.max(0, deadlineMs - Date.now());
+            const nextLeft = Math.max(0, Math.ceil(remainingMs / 1000));
+            setTimeLeft(nextLeft);
+            if (nextLeft <= 0) {
+                onComplete?.();
+            }
+        };
 
-        // countdown
-        const timer = setInterval(() => {
-            setTimeLeft((prev) => prev - 1);
-        }, 1000);
-
-        return () => clearInterval(timer);
-    }, [timeLeft, onComplete]);
+        tick();
+        const timer = window.setInterval(tick, 250);
+        return () => window.clearInterval(timer);
+    }, [deadlineMs, onComplete]);
 
     // progress: 100% = full, 0% = empty
     const progress = (timeLeft / duration) * 100;

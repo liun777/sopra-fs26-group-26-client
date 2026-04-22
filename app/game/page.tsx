@@ -51,17 +51,27 @@ type GameStateSignal = {
     currentPlayerId?: number | string | null;
     currentTurnPlayerId?: number | string | null;
     caboCalled?: boolean | null;
+    caboForcedByTimeout?: boolean | null;
     turnSeconds?: number | string | null;
     initialPeekSeconds?: number | string | null;
     abilityRevealSeconds?: number | string | null;
     rematchDecisionSeconds?: number | string | null;
     afkTimeoutSeconds?: number | string | null;
+    timedOutPlayerIds?: Array<number | string | null> | null;
     lastMoveEvent?: LastMoveEventSignal | null;
     discardPileTop?: {
         value?: number | string | null;
         code?: string | null;
     } | null;
     players?: PlayerHandSignal[] | null;
+};
+
+type GameRuntimeConfigResponse = {
+    turnSeconds?: number | string | null;
+    initialPeekSeconds?: number | string | null;
+    abilityRevealSeconds?: number | string | null;
+    afkTimeoutSeconds?: number | string | null;
+    rematchDecisionSeconds?: number | string | null;
 };
 
 type MoveZoneSignal = "DRAW_PILE" | "DISCARD_PILE" | "HAND";
@@ -567,6 +577,7 @@ const Game = () => {
       const [initialPeekDurationSeconds, setInitialPeekDurationSeconds] =
           useState<number>(DEFAULT_INITIAL_PEEK_SECONDS);
       const [isCaboCalledGlobal, setIsCaboCalledGlobal] = useState<boolean>(false);
+      const [isCaboForcedByTimeoutGlobal, setIsCaboForcedByTimeoutGlobal] = useState<boolean>(false);
       const [afkTimeoutSeconds, setAfkTimeoutSeconds] = useState<number>(300);
       const [afkRemainingSeconds, setAfkRemainingSeconds] = useState<number>(300);
       const [socketSynced, setSocketSynced] = useState<boolean>(true);
@@ -607,12 +618,15 @@ const Game = () => {
       const [orderedPlayerIds, setOrderedPlayerIds] = useState<number[]>([]);
       const [playerCardsById, setPlayerCardsById] = useState<Record<number, SeatCardView[]>>({});
       const [playerNamesById, setPlayerNamesById] = useState<Record<number, string>>({});
+      const [timedOutPlayerIds, setTimedOutPlayerIds] = useState<number[]>([]);
       const [currentTurnUserId, setCurrentTurnUserId] = useState<number | null>(null);
       const [turnTimeLeft, setTurnTimeLeft] = useState<number>(DEFAULT_TURN_SECONDS);
       const [isCallingCabo, setIsCallingCabo] = useState<boolean>(false);
       const [isSubmittingRematchDecision, setIsSubmittingRematchDecision] = useState<boolean>(false);
       const [rematchCountdown, setRematchCountdown] = useState<number>(0);
       const [myRematchDecision, setMyRematchDecision] = useState<string | null>(null);
+      const turnDeadlineMsRef = useRef<number | null>(null);
+      const rematchDeadlineMsRef = useRef<number | null>(null);
 
       const parsedSelfUserId = Number(userId);
       const selfUserId = userId.trim() !== "" && Number.isFinite(parsedSelfUserId)
@@ -948,6 +962,14 @@ const Game = () => {
                           }
 
                           setIsCaboCalledGlobal(payload?.caboCalled === true);
+                          setIsCaboForcedByTimeoutGlobal(payload?.caboForcedByTimeout === true);
+                          setTimedOutPlayerIds(
+                              Array.isArray(payload?.timedOutPlayerIds)
+                                  ? payload.timedOutPlayerIds
+                                      .map((id) => Number(id))
+                                      .filter((id) => Number.isFinite(id))
+                                  : []
+                          );
 
                           const nextTurnSeconds = Number(payload?.turnSeconds);
                           if (Number.isFinite(nextTurnSeconds) && nextTurnSeconds > 0) {
@@ -1242,9 +1264,52 @@ const Game = () => {
       }, [apiService, tablePlayerIds, playerNamesById]);
 
       useEffect(() => {
+          if (!gameId || !token) {
+              return;
+          }
+
+          let active = true;
+          const loadRuntimeConfig = async () => {
+              try {
+                  const config = await apiService.getWithAuth<GameRuntimeConfigResponse>(
+                      `/games/${gameId}/config`,
+                      token
+                  );
+                  if (!active) {
+                      return;
+                  }
+                  const nextTurnSeconds = Number(config?.turnSeconds);
+                  if (Number.isFinite(nextTurnSeconds) && nextTurnSeconds > 0) {
+                      setTurnDurationSeconds(Math.floor(nextTurnSeconds));
+                  }
+                  const nextInitialPeekSeconds = Number(config?.initialPeekSeconds);
+                  if (Number.isFinite(nextInitialPeekSeconds) && nextInitialPeekSeconds > 0) {
+                      setInitialPeekDurationSeconds(Math.floor(nextInitialPeekSeconds));
+                  }
+                  const nextRematchSeconds = Number(config?.rematchDecisionSeconds);
+                  if (Number.isFinite(nextRematchSeconds) && nextRematchSeconds > 0) {
+                      setRematchDecisionDuration(Math.floor(nextRematchSeconds));
+                  }
+                  const nextAfkTimeout = Number(config?.afkTimeoutSeconds);
+                  if (Number.isFinite(nextAfkTimeout) && nextAfkTimeout > 0) {
+                      setAfkTimeoutSeconds(Math.floor(nextAfkTimeout));
+                  }
+              } catch {
+                  // keep defaults if config fetch fails
+              }
+          };
+          void loadRuntimeConfig();
+
+          return () => {
+              active = false;
+          };
+      }, [apiService, gameId, token]);
+
+      useEffect(() => {
           if (!isAwaitingRematchDecision || !gameId || !token) {
               setRematchCountdown(0);
               setMyRematchDecision(null);
+              rematchDeadlineMsRef.current = null;
               return;
           }
 
@@ -1265,10 +1330,18 @@ const Game = () => {
           };
           void loadRematchConfig();
 
-          setRematchCountdown(rematchDecisionDuration);
-          const intervalId = window.setInterval(() => {
-              setRematchCountdown((previous) => (previous <= 1 ? 0 : previous - 1));
-          }, 1000);
+          rematchDeadlineMsRef.current = Date.now() + (rematchDecisionDuration * 1000);
+          const tick = () => {
+              const deadline = rematchDeadlineMsRef.current;
+              if (deadline == null) {
+                  setRematchCountdown(0);
+                  return;
+              }
+              const remainingMs = Math.max(0, deadline - Date.now());
+              setRematchCountdown(Math.max(0, Math.ceil(remainingMs / 1000)));
+          };
+          tick();
+          const intervalId = window.setInterval(tick, 250);
 
           return () => {
               active = false;
@@ -1359,16 +1432,25 @@ const Game = () => {
       useEffect(() => {
           if (!showTurnCountdown) {
               setTurnTimeLeft(turnDurationSeconds);
+              turnDeadlineMsRef.current = null;
               return;
           }
 
-          setTurnTimeLeft(turnDurationSeconds);
-          const intervalId = setInterval(() => {
-              setTurnTimeLeft((previous) => (previous <= 1 ? 0 : previous - 1));
-          }, 1000);
+          turnDeadlineMsRef.current = Date.now() + (turnDurationSeconds * 1000);
+          const tick = () => {
+              const deadline = turnDeadlineMsRef.current;
+              if (deadline == null) {
+                  setTurnTimeLeft(turnDurationSeconds);
+                  return;
+              }
+              const remainingMs = Math.max(0, deadline - Date.now());
+              setTurnTimeLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
+          };
+          tick();
+          const intervalId = window.setInterval(tick, 250);
 
           return () => {
-              clearInterval(intervalId);
+              window.clearInterval(intervalId);
           };
       }, [showTurnCountdown, currentTurnUserId, turnDurationSeconds]);
 
@@ -2074,6 +2156,7 @@ const skipAbilityChoice = () => {
 const canCallCabo =
     isCurrentTurnMine &&
     isRoundActive &&
+    !isCaboCalledGlobal &&
     !isPeekPhase &&
     !isAbilityPending &&
     !drawnCard &&
@@ -2085,8 +2168,16 @@ const canCallCabo =
     !isAwaitingRematchDecision;
 
 const callCabo = () => {
-    if (!canCallCabo || !gameId || !token) {
+    if (!canCallCabo || !gameId || !token || isCaboCalledGlobal) {
         return;
+    }
+    if (typeof window !== "undefined") {
+        const confirmed = window.confirm(
+            "Are you sure you want to call Cabo? This ends your turn immediately and starts the last round."
+        );
+        if (!confirmed) {
+            return;
+        }
     }
 
     setIsCallingCabo(true);
@@ -2113,9 +2204,6 @@ const submitRematchChoice = (decision: "CONTINUE" | "FRESH" | "NONE") => {
         token
     ).then(() => {
         setMyRematchDecision(decision);
-        if (decision === "NONE") {
-            router.replace("/dashboard");
-        }
     }).catch((error) => {
         console.error("Failed to submit rematch decision:", error);
     }).finally(() => {
@@ -2204,10 +2292,12 @@ const playerListRows = tablePlayerIds.map((id) => {
           const fallbackLabel = selfUserId != null && id === selfUserId ? "You" : `Player ${id}`;
           const label = playerNamesById[id] ?? fallbackLabel;
           const isActive = !isPeekPhase && currentTurnUserId != null && currentTurnUserId === id;
+          const isTimedOut = timedOutPlayerIds.includes(id);
           return {
               id,
               label,
               isActive,
+              isTimedOut,
           };
       });
 
@@ -2218,7 +2308,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                       {playerListRows.map((player) => (
                           <div
                               key={player.id}
-                              className={`game-player-list-item${player.isActive ? " active" : ""}`}
+                              className={`game-player-list-item${player.isActive ? " active" : ""}${player.isTimedOut ? " timedout" : ""}`}
                           >
                               <span>{player.label}</span>
                               {player.isActive && showTurnCountdown && (
@@ -2338,7 +2428,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           className="game-opponent-card-anchor"
                                       >
                                           <CardComponent
-                                              hidden={true}
+                                              hidden={card.faceDown}
                                               value={card.value}
                                               size="small"
                                               // #28: highlight opponent cards during ability phase
@@ -2393,7 +2483,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           className="game-opponent-card-anchor"
                                       >
                                           <CardComponent
-                                              hidden={true}
+                                              hidden={card.faceDown}
                                               value={card.value}
                                               size="small"
                                               // #28: highlight opponent cards during ability phase
@@ -2448,7 +2538,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           className="game-opponent-card-anchor"
                                       >
                                           <CardComponent
-                                              hidden={true}
+                                              hidden={card.faceDown}
                                               value={card.value}
                                               size="small"
                                               // #28: highlight opponent cards during ability phase
@@ -2595,7 +2685,11 @@ const playerListRows = tablePlayerIds.map((id) => {
                           loading={isCallingCabo}
                           onClick={callCabo}
                       >
-                          {isCaboCalledGlobal ? "Cabo Called! Last Round!" : "Call Cabo"}
+                          {isCaboCalledGlobal
+                              ? (isCaboForcedByTimeoutGlobal
+                                  ? "Cabo Called due to AFK/DC. Last Round!"
+                                  : "Cabo Called. Last Round!")
+                              : "Call Cabo"}
                       </Button>
                   </div>
 

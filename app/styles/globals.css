@@ -190,6 +190,10 @@ h1 {
   border-bottom: none;
 }
 
+.lobby-setting-row-toggle {
+  grid-template-columns: 1fr auto;
+}
+
 .lobby-setting-row-label {
   text-align: left;
   color: #f4f7ff;
@@ -202,6 +206,11 @@ h1 {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.lobby-setting-row-control-toggle {
+  width: auto;
+  justify-content: flex-end;
 }
 
 .lobby-setting-row-control .ant-slider {
@@ -217,10 +226,21 @@ h1 {
   font-weight: 700;
 }
 
+.lobby-setting-row-static {
+  color: #d7deef;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 @media (max-width: 820px) {
   .lobby-setting-row {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .lobby-setting-row-toggle {
+    grid-template-columns: 1fr auto;
+    align-items: center;
   }
 
   .lobby-setting-row-value {
@@ -1476,6 +1496,14 @@ body.cabo-reconnect-active .cabo-invite-corner {
   color: #34e27a;
   font-weight: 700;
   text-shadow: 0 0 6px rgba(52, 226, 122, 0.45);
+}
+
+.game-player-list-item.timedout {
+  color: #ff8e8e;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(255, 94, 94, 0.45);
+  border: 1px solid rgba(255, 116, 116, 0.55);
+  background: rgba(95, 18, 18, 0.55);
 }
 
 .game-player-list-timer {
