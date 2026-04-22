@@ -26,7 +26,9 @@ type WaitingRow = {
 type WaitingView = {
   sessionId?: string;
   isPublic?: boolean;
+  viewerIsHost?: boolean;
   afkTimeoutSeconds?: number;
+  websocketGraceSeconds?: number;
   initialPeekSeconds?: number;
   turnSeconds?: number;
   abilityRevealSeconds?: number;
@@ -75,6 +77,7 @@ type LobbySlot = {
 
 type LobbyTimerSettings = {
   afkTimeoutSeconds: number;
+  websocketGraceSeconds: number;
   initialPeekSeconds: number;
   turnSeconds: number;
   abilityRevealSeconds: number;
@@ -87,6 +90,7 @@ const HOST_CROWN = "\uD83D\uDC51\uFE0E";
 const KICK_ICON = "\u2716";
 const DEFAULT_LOBBY_TIMERS: LobbyTimerSettings = {
   afkTimeoutSeconds: 300,
+  websocketGraceSeconds: 300,
   initialPeekSeconds: 10,
   turnSeconds: 30,
   abilityRevealSeconds: 5,
@@ -94,7 +98,8 @@ const DEFAULT_LOBBY_TIMERS: LobbyTimerSettings = {
 };
 
 const TIMER_LIMITS = {
-  afkTimeoutSeconds: { min: 180, max: 1200 },
+  afkTimeoutSeconds: { min: 180, max: 600 },
+  websocketGraceSeconds: { min: 180, max: 600 },
   initialPeekSeconds: { min: 3, max: 60 },
   turnSeconds: { min: 10, max: 60 },
   abilityRevealSeconds: { min: 3, max: 10 },
@@ -107,6 +112,19 @@ function clampTimerValue(
 ): number {
   const { min, max } = TIMER_LIMITS[key];
   return Math.max(min, Math.min(max, Math.floor(nextValue)));
+}
+
+function resolveTimerSettingFromView(
+  waitingView: WaitingView,
+  key: keyof LobbyTimerSettings,
+  currentValue: number,
+): number {
+  const rawValue = waitingView?.[key];
+  const parsedValue = Number(rawValue);
+  if (Number.isFinite(parsedValue)) {
+    return clampTimerValue(key, parsedValue);
+  }
+  return currentValue;
 }
 
 function getAfkWarningLeadSeconds(afkTimeoutSeconds: number): number {
@@ -578,27 +596,50 @@ function WaitingLobbyContent() {
       );
       setView(waitingView);
       setIsPublicLobby(waitingView?.isPublic !== false);
-      setLobbyTimerSettings({
-        afkTimeoutSeconds: clampTimerValue(
-          "afkTimeoutSeconds",
-          Number(waitingView?.afkTimeoutSeconds ?? DEFAULT_LOBBY_TIMERS.afkTimeoutSeconds),
-        ),
-        initialPeekSeconds: clampTimerValue(
-          "initialPeekSeconds",
-          Number(waitingView?.initialPeekSeconds ?? DEFAULT_LOBBY_TIMERS.initialPeekSeconds),
-        ),
-        turnSeconds: clampTimerValue(
-          "turnSeconds",
-          Number(waitingView?.turnSeconds ?? DEFAULT_LOBBY_TIMERS.turnSeconds),
-        ),
-        abilityRevealSeconds: clampTimerValue(
-          "abilityRevealSeconds",
-          Number(waitingView?.abilityRevealSeconds ?? DEFAULT_LOBBY_TIMERS.abilityRevealSeconds),
-        ),
-        rematchDecisionSeconds: clampTimerValue(
-          "rematchDecisionSeconds",
-          Number(waitingView?.rematchDecisionSeconds ?? DEFAULT_LOBBY_TIMERS.rematchDecisionSeconds),
-        ),
+      setUserIsHost(waitingView?.viewerIsHost === true);
+      setLobbyTimerSettings((previous) => {
+        const nextSettings: LobbyTimerSettings = {
+          afkTimeoutSeconds: resolveTimerSettingFromView(
+            waitingView,
+            "afkTimeoutSeconds",
+            previous.afkTimeoutSeconds,
+          ),
+          websocketGraceSeconds: resolveTimerSettingFromView(
+            waitingView,
+            "websocketGraceSeconds",
+            previous.websocketGraceSeconds,
+          ),
+          initialPeekSeconds: resolveTimerSettingFromView(
+            waitingView,
+            "initialPeekSeconds",
+            previous.initialPeekSeconds,
+          ),
+          turnSeconds: resolveTimerSettingFromView(
+            waitingView,
+            "turnSeconds",
+            previous.turnSeconds,
+          ),
+          abilityRevealSeconds: resolveTimerSettingFromView(
+            waitingView,
+            "abilityRevealSeconds",
+            previous.abilityRevealSeconds,
+          ),
+          rematchDecisionSeconds: resolveTimerSettingFromView(
+            waitingView,
+            "rematchDecisionSeconds",
+            previous.rematchDecisionSeconds,
+          ),
+        };
+
+        const unchanged =
+          nextSettings.afkTimeoutSeconds === previous.afkTimeoutSeconds &&
+          nextSettings.websocketGraceSeconds === previous.websocketGraceSeconds &&
+          nextSettings.initialPeekSeconds === previous.initialPeekSeconds &&
+          nextSettings.turnSeconds === previous.turnSeconds &&
+          nextSettings.abilityRevealSeconds === previous.abilityRevealSeconds &&
+          nextSettings.rematchDecisionSeconds === previous.rematchDecisionSeconds;
+
+        return unchanged ? previous : nextSettings;
       });
     } catch (error: unknown) {
       const status = (error as ApplicationError)?.status;
@@ -619,41 +660,6 @@ function WaitingLobbyContent() {
     }
     void loadView();
   }, [loadView, sessionIdParam]);
-
-  useEffect(() => {
-    const authToken = token.trim();
-    const sessionId = sessionIdParam.trim();
-
-    if (!authToken || !sessionId) {
-      setUserIsHost(false);
-      return;
-    }
-
-    let active = true;
-
-    const loadHostRole = async () => {
-      try {
-        const mine = await api.getWithAuth<LobbySession>(
-          "/lobbies/my/waiting",
-          authToken,
-        );
-
-        if (active) {
-          setUserIsHost(String(mine.sessionId ?? "").trim() === sessionId);
-        }
-      } catch {
-        if (active) {
-          setUserIsHost(false);
-        }
-      }
-    };
-
-    void loadHostRole();
-
-    return () => {
-      active = false;
-    };
-  }, [api, token, sessionIdParam]);
 
   useEffect(() => {
     const authToken = token.trim();
@@ -1313,7 +1319,7 @@ function WaitingLobbyContent() {
                     </div>
                   </div>
                   <div className="lobby-setting-row">
-                    <span className="lobby-setting-row-label">AFK Timeout (sec)</span>
+                    <span className="lobby-setting-row-label">Game AFK/DC Timeout (sec)</span>
                     <div className="lobby-setting-row-control">
                       <Slider
                         min={TIMER_LIMITS.afkTimeoutSeconds.min}
@@ -1322,7 +1328,6 @@ function WaitingLobbyContent() {
                         marks={{
                           [TIMER_LIMITS.afkTimeoutSeconds.min]: String(TIMER_LIMITS.afkTimeoutSeconds.min),
                           300: "300",
-                          600: "600",
                           [TIMER_LIMITS.afkTimeoutSeconds.max]: String(TIMER_LIMITS.afkTimeoutSeconds.max),
                         }}
                         value={lobbyTimerSettings.afkTimeoutSeconds}
@@ -1338,6 +1343,33 @@ function WaitingLobbyContent() {
                         }}
                       />
                       <span className="lobby-setting-row-value">{lobbyTimerSettings.afkTimeoutSeconds}s</span>
+                    </div>
+                  </div>
+                  <div className="lobby-setting-row">
+                    <span className="lobby-setting-row-label">Lobby Disconnect Grace (sec)</span>
+                    <div className="lobby-setting-row-control">
+                      <Slider
+                        min={TIMER_LIMITS.websocketGraceSeconds.min}
+                        max={TIMER_LIMITS.websocketGraceSeconds.max}
+                        step={30}
+                        marks={{
+                          [TIMER_LIMITS.websocketGraceSeconds.min]: String(TIMER_LIMITS.websocketGraceSeconds.min),
+                          300: "300",
+                          [TIMER_LIMITS.websocketGraceSeconds.max]: String(TIMER_LIMITS.websocketGraceSeconds.max),
+                        }}
+                        value={lobbyTimerSettings.websocketGraceSeconds}
+                        disabled={updatingTimerKey === "websocketGraceSeconds"}
+                        onChange={(nextValue) => {
+                          const numeric = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+                          const clamped = clampTimerValue("websocketGraceSeconds", Number(numeric));
+                          setLobbyTimerSettings((prev) => ({
+                            ...prev,
+                            websocketGraceSeconds: clamped,
+                          }));
+                          scheduleLobbyTimerSettingUpdate("websocketGraceSeconds", clamped);
+                        }}
+                      />
+                      <span className="lobby-setting-row-value">{lobbyTimerSettings.websocketGraceSeconds}s</span>
                     </div>
                   </div>
                   <div className="lobby-setting-row">

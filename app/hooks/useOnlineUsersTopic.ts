@@ -7,7 +7,7 @@ import { Client, IMessage } from "@stomp/stompjs";
 import { useEffect, useState } from "react";
 import SockJS from "sockjs-client";
 
-const ONLINE_USERS_REFRESH_MS = 2500; // CAN BE CHANGED, ITS REFRESH RATE FOR USER LIST
+const ONLINE_USERS_REFRESH_MS = 6000; // REST fallback poll (used when websocket is down)
 
 function isOnlineStatus(raw: unknown): boolean {
   const presence = toPresenceKey(raw);
@@ -45,6 +45,7 @@ export function useOnlineUsersTopic(): User[] {
   useEffect(() => {
     let cancelled = false;
     let wsConnected = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const refreshFromRest = async () => {
       if (wsConnected) {
@@ -63,9 +64,17 @@ export function useOnlineUsersTopic(): User[] {
     };
 
     void refreshFromRest();
-    const pollId = setInterval(() => {
-      void refreshFromRest();
-    }, ONLINE_USERS_REFRESH_MS);
+    const scheduleFallbackPoll = () => {
+      if (cancelled) return;
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
+      pollTimer = setTimeout(async () => {
+        await refreshFromRest();
+        scheduleFallbackPoll();
+      }, ONLINE_USERS_REFRESH_MS);
+    };
+    scheduleFallbackPoll();
     const t = token.trim();
 
     // use SockJS instead of raw WebSocket
@@ -119,7 +128,9 @@ export function useOnlineUsersTopic(): User[] {
     return () => {
       cancelled = true;
       wsConnected = false;
-      clearInterval(pollId);
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
       if (client) {
         void client.deactivate();
       }

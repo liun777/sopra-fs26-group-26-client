@@ -1446,19 +1446,29 @@ body.cabo-reconnect-active .cabo-invite-corner {
   background-color: #c0392b !important;
   border-color: #a93226 !important;
   color: #ffffff !important;
-  box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.2), 0 0 16px rgba(231, 76, 60, 0.5) !important;
-  animation: gameCaboCalledPulse 1.25s ease-in-out infinite;
+  outline: 2px solid rgba(255, 110, 110, 0.88) !important;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.2), 0 0 18px rgba(231, 76, 60, 0.55) !important;
+  line-height: 1.2 !important;
+  min-height: 54px;
+  animation: gameCaboCalledPulse 2.4s ease-in-out infinite;
 }
 
 @keyframes gameCaboCalledPulse {
   0% {
-    box-shadow: 0 0 0 1px rgba(192, 57, 43, 0.2), 0 0 10px rgba(231, 76, 60, 0.32);
+    outline-color: rgba(255, 110, 110, 0.52);
+    box-shadow: 0 0 0 1px rgba(192, 57, 43, 0.2), 0 0 10px rgba(231, 76, 60, 0.28);
+    filter: brightness(0.95);
   }
   50% {
-    box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.36), 0 0 20px rgba(231, 76, 60, 0.65);
+    outline-color: rgba(255, 135, 135, 0.98);
+    box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.42), 0 0 26px rgba(255, 70, 70, 0.82);
+    filter: brightness(1.08);
   }
   100% {
-    box-shadow: 0 0 0 1px rgba(192, 57, 43, 0.2), 0 0 10px rgba(231, 76, 60, 0.32);
+    outline-color: rgba(255, 110, 110, 0.52);
+    box-shadow: 0 0 0 1px rgba(192, 57, 43, 0.2), 0 0 10px rgba(231, 76, 60, 0.28);
+    filter: brightness(0.95);
   }
 }
 
@@ -1731,7 +1741,7 @@ body.cabo-reconnect-active .cabo-invite-corner {
   position: fixed;
   pointer-events: none;
   will-change: transform, opacity, filter;
-  animation: gameCardFlyAcross 0.44s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation: gameCardFlyAcross 1.50s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 @keyframes gameCardFlyAcross {
@@ -1817,11 +1827,14 @@ body.cabo-reconnect-active .cabo-invite-corner {
   display: flex;
   justify-content: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  width: min(320px, 92vw);
+  margin-inline: auto;
 }
 
 .game-turn-action-buttons .ant-btn {
-  min-width: 136px;
+  min-width: 0;
+  flex: 1 1 0;
 }
 
 .game-turn-action-btn.ant-btn,
@@ -1996,7 +2009,8 @@ body.cabo-reconnect-active .cabo-invite-corner {
   }
 
   .game-turn-action-buttons .ant-btn {
-    min-width: 124px;
+    min-width: 0;
+    flex: 1 1 0;
     font-size: 12px;
     padding-inline: 8px;
   }

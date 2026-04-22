@@ -7,7 +7,7 @@ import useLocalStorage from "@/hooks/useLocalStorage";
 import CardComponent from "./components/CardComponent";
 import PeekTimer from "./components/PeekTimer";
 import type { ApplicationError } from "@/types/error";
-import { getStompBrokerUrl } from "@/utils/domain";
+import { getApiDomain, getStompBrokerUrl } from "@/utils/domain";
 import { Client } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 import type { User } from "@/types/user";
@@ -524,6 +524,8 @@ const Game = () => {
   const gameId = activeSessionId.trim();
   const HAND_SIZE = 4; // referencing here, keeps it consistent and less prone to errors
   const TURN_CARD_DRAG_MIME = "application/x-cabo-turn-card";
+  const DISCARD_PILE_SWAP_DRAG_MIME = "application/x-cabo-discard-pile-swap";
+  const FLYING_CARD_ANIMATION_MS = 1500; // slower
   const createHiddenPeekCards = () => Array(HAND_SIZE).fill(false); // hide card by default
 
 
@@ -572,10 +574,13 @@ const Game = () => {
       //#19 Add a visual timer/progress bar that syncs with the backend to warn the player of expiring time
       const DEFAULT_TURN_SECONDS = 30;
       const DEFAULT_INITIAL_PEEK_SECONDS = 10;
+      const DEFAULT_ABILITY_REVEAL_SECONDS = 5;
       const [rematchDecisionDuration, setRematchDecisionDuration] = useState<number>(60);
       const [turnDurationSeconds, setTurnDurationSeconds] = useState<number>(DEFAULT_TURN_SECONDS);
       const [initialPeekDurationSeconds, setInitialPeekDurationSeconds] =
           useState<number>(DEFAULT_INITIAL_PEEK_SECONDS);
+      const [abilityRevealDurationSeconds, setAbilityRevealDurationSeconds] =
+          useState<number>(DEFAULT_ABILITY_REVEAL_SECONDS);
       const [isCaboCalledGlobal, setIsCaboCalledGlobal] = useState<boolean>(false);
       const [isCaboForcedByTimeoutGlobal, setIsCaboForcedByTimeoutGlobal] = useState<boolean>(false);
       const [afkTimeoutSeconds, setAfkTimeoutSeconds] = useState<number>(300);
@@ -584,13 +589,14 @@ const Game = () => {
       // #20
       const [drawnCard, setDrawnCard] = useState<Card | null>(null);
       const [selectedDrawSource, setSelectedDrawSource] = useState<"draw_pile" | "discard_pile" | null>(null);
-      const [hasChosenDrawSourceThisTurn, setHasChosenDrawSourceThisTurn] = useState<boolean>(false);
+      const [, setHasChosenDrawSourceThisTurn] = useState<boolean>(false);
       const [isDrawingFromPile, setIsDrawingFromPile] = useState<boolean>(false);
       const [isDrawingFromDiscardPile, setIsDrawingFromDiscardPile] = useState<boolean>(false);
       const [isSwappingDrawnCard, setIsSwappingDrawnCard] = useState<boolean>(false);
       const [isDiscardingDrawnCard, setIsDiscardingDrawnCard] = useState<boolean>(false);
       const [isSkippingAbilityChoice, setIsSkippingAbilityChoice] = useState<boolean>(false);
       const [isDraggingTurnCard, setIsDraggingTurnCard] = useState<boolean>(false);
+      const [isDraggingDiscardPileSwapCard, setIsDraggingDiscardPileSwapCard] = useState<boolean>(false);
       const [dragOverOwnCardIndex, setDragOverOwnCardIndex] = useState<number | null>(null);
       const [isDragOverDiscardPile, setIsDragOverDiscardPile] = useState<boolean>(false);
       const [isDiscardPileTemporarilyHidden, setIsDiscardPileTemporarilyHidden] = useState<boolean>(false);
@@ -985,6 +991,10 @@ const Game = () => {
                           if (Number.isFinite(nextRematchSeconds) && nextRematchSeconds > 0) {
                               setRematchDecisionDuration(Math.floor(nextRematchSeconds));
                           }
+                          const nextAbilityRevealSeconds = Number(payload?.abilityRevealSeconds);
+                          if (Number.isFinite(nextAbilityRevealSeconds) && nextAbilityRevealSeconds > 0) {
+                              setAbilityRevealDurationSeconds(Math.floor(nextAbilityRevealSeconds));
+                          }
                           const nextAfkTimeout = Number(payload?.afkTimeoutSeconds);
                           if (Number.isFinite(nextAfkTimeout) && nextAfkTimeout > 0) {
                               setAfkTimeoutSeconds(Math.floor(nextAfkTimeout));
@@ -1112,7 +1122,7 @@ const Game = () => {
                                   if (pendingAnimation.source === "discard_pile" && pendingAnimation.cardValue != null) {
                                       setDiscardTopOverrideUntilClear(
                                           { value: pendingAnimation.cardValue, visibility: true, ability: "" },
-                                          460
+                                          FLYING_CARD_ANIMATION_MS
                                       );
                                   } else {
                                       setDiscardTopOverrideUntilClear(null);
@@ -1285,6 +1295,10 @@ const Game = () => {
                   const nextInitialPeekSeconds = Number(config?.initialPeekSeconds);
                   if (Number.isFinite(nextInitialPeekSeconds) && nextInitialPeekSeconds > 0) {
                       setInitialPeekDurationSeconds(Math.floor(nextInitialPeekSeconds));
+                  }
+                  const nextAbilityRevealSeconds = Number(config?.abilityRevealSeconds);
+                  if (Number.isFinite(nextAbilityRevealSeconds) && nextAbilityRevealSeconds > 0) {
+                      setAbilityRevealDurationSeconds(Math.floor(nextAbilityRevealSeconds));
                   }
                   const nextRematchSeconds = Number(config?.rematchDecisionSeconds);
                   if (Number.isFinite(nextRematchSeconds) && nextRematchSeconds > 0) {
@@ -1531,21 +1545,19 @@ const isStandardTurnActionBlocked =
     isAbilityPending;
 const canDrawFromPile = !isStandardTurnActionBlocked && !drawnCard;
 const canDrawFromDiscardPile = !isStandardTurnActionBlocked && !drawnCard;
+const hasDrawnTurnCardInHand = !!drawnCard && selectedDrawSource !== null;
 const canSwapDrawnCardWithHand =
     !isStandardTurnActionBlocked &&
-    !!drawnCard &&
-    selectedDrawSource !== null &&
-    hasChosenDrawSourceThisTurn;
+    hasDrawnTurnCardInHand;
 const canDiscardDrawnCard =
     !isStandardTurnActionBlocked &&
-    !!drawnCard &&
-    selectedDrawSource === "draw_pile" &&
-    hasChosenDrawSourceThisTurn;
+    hasDrawnTurnCardInHand &&
+    selectedDrawSource === "draw_pile";
 const showDrawPileAsRevealedCard = selectedDrawSource === "draw_pile" && !!drawnCard;
 const isDrawPileSelectedForTurnAction =
-    hasChosenDrawSourceThisTurn && selectedDrawSource === "draw_pile" && !!drawnCard;
+    hasDrawnTurnCardInHand && selectedDrawSource === "draw_pile";
 const isDiscardPileSelectedForTurnAction =
-    hasChosenDrawSourceThisTurn && selectedDrawSource === "discard_pile" && !!drawnCard;
+    hasDrawnTurnCardInHand && selectedDrawSource === "discard_pile";
 const shouldHighlightPileChoice = canDrawFromPile || canDrawFromDiscardPile;
 const shouldHighlightDiscardPileAsAction = shouldHighlightPileChoice || canDiscardDrawnCard;
 const shouldHighlightOwnCardsForTurnSwap = canSwapDrawnCardWithHand;
@@ -1676,7 +1688,7 @@ const handleAbilityOwnCardClick = (cardIndex: number) => {
             abilityPeekHideTimeoutRef.current = window.setTimeout(() => {
                 setPeekVisibleCards(createHiddenPeekCards());
                 abilityPeekHideTimeoutRef.current = null;
-            }, 3000);
+            }, Math.max(1000, abilityRevealDurationSeconds * 1000));
         }).catch(console.error)
         .finally(() => setIsSubmittingAbility(false));
 
@@ -1761,6 +1773,84 @@ const refreshDiscardPileTop = async (activeGameId: string) => {
     }
 };
 
+useEffect(() => {
+    const authToken = token.trim();
+    if (!gameId || !authToken) {
+        return;
+    }
+
+    const resyncOnFocus = async () => {
+        if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+            return;
+        }
+
+        lastActivityMsRef.current = Date.now();
+        clearDiscardTopOverrideTimer();
+        setDiscardTopAnimationOverride(null);
+
+        // Keep local view aligned after tab/background throttling without waiting for a manual click.
+        await Promise.allSettled([
+            refreshOwnHand(gameId, authToken),
+            refreshDiscardPileTop(gameId),
+            apiService
+                .getWithAuth<unknown>(`/games/${gameId}/drawn-card`, authToken)
+                .then((rawCard) => {
+                    const nextDrawnCard = toValidCardOrNull(rawCard);
+                    setDrawnCard(nextDrawnCard);
+                    if (!nextDrawnCard) {
+                        setSelectedDrawSource(null);
+                        setHasChosenDrawSourceThisTurn(false);
+                    }
+                })
+                .catch(() => {
+                    setDrawnCard(null);
+                    setSelectedDrawSource(null);
+                    setHasChosenDrawSourceThisTurn(false);
+                }),
+            fetch(`${getApiDomain()}/heartbeat`, {
+                method: "POST",
+                headers: { Authorization: authToken },
+            }),
+        ]);
+    };
+
+    const handleVisibilityChange = () => {
+        if (typeof document !== "undefined" && document.visibilityState === "visible") {
+            void resyncOnFocus();
+        }
+    };
+
+    void resyncOnFocus();
+    window.addEventListener("focus", resyncOnFocus, { passive: true });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+        window.removeEventListener("focus", resyncOnFocus);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+}, [apiService, gameId, token]);
+
+useEffect(() => {
+    if (!gameId) {
+        return;
+    }
+
+    const resyncDiscardPileTop = () => {
+        if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+            return;
+        }
+        clearDiscardTopOverrideTimer();
+        setDiscardTopAnimationOverride(null);
+        void refreshDiscardPileTop(gameId);
+    };
+
+    window.addEventListener("focus", resyncDiscardPileTop, { passive: true });
+    document.addEventListener("visibilitychange", resyncDiscardPileTop);
+    return () => {
+        window.removeEventListener("focus", resyncDiscardPileTop);
+        document.removeEventListener("visibilitychange", resyncDiscardPileTop);
+    };
+}, [gameId]);
+
 const clearFlyingCardTimer = () => {
     if (flyingCardTimeoutsRef.current.length === 0) {
         return;
@@ -1826,7 +1916,7 @@ const launchFlyingCardAnimation = (
             current.filter((animation) => animation.id !== animationId)
         );
         flyingCardTimeoutsRef.current = flyingCardTimeoutsRef.current.filter((id) => id !== timeoutId);
-    }, 460);
+    }, FLYING_CARD_ANIMATION_MS);
     flyingCardTimeoutsRef.current.push(timeoutId);
 };
 
@@ -1931,6 +2021,49 @@ const discardDrawnCard = () => {
     });
 };
 
+const swapDiscardPileTopWithHand = (targetCardIndex: number) => {
+    if (!canDrawFromDiscardPile || !gameId || !token) {
+        return;
+    }
+
+    const sourceElement = discardPileCardRef.current;
+    const targetElement = ownHandCardRefs.current[targetCardIndex] ?? null;
+    const swappedOutHandCard = myHand[targetCardIndex];
+    const swappedOutHandCardHidden = !peekVisibleCards[targetCardIndex];
+    const swappedOutSourceElement = ownHandCardRefs.current[targetCardIndex] ?? null;
+    const swappedOutTargetElement = discardPileCardRef.current;
+    const discardTopValue = discardTopCard?.value;
+
+    setIsSwappingDrawnCard(true);
+    void apiService.postWithAuth(
+        `/games/${gameId}/discard-pile/swap`,
+        { targetCardIndex },
+        token
+    ).then(async () => {
+        if (sourceElement && targetElement) {
+            launchFlyingCardAnimation(sourceElement, targetElement, {
+                hidden: false,
+                value: discardTopValue,
+            });
+        }
+        if (swappedOutHandCard && swappedOutSourceElement && swappedOutTargetElement) {
+            launchFlyingCardAnimation(swappedOutSourceElement, swappedOutTargetElement, {
+                hidden: swappedOutHandCardHidden,
+                value: swappedOutHandCard.value,
+            });
+        }
+        triggerDiscardFlipReveal();
+        await Promise.all([
+            refreshOwnHand(gameId, token),
+            refreshDiscardPileTop(gameId),
+        ]);
+    }).catch((error) => {
+        console.error("Failed to swap discard pile top card:", error);
+    }).finally(() => {
+        setIsSwappingDrawnCard(false);
+    });
+};
+
 const drawFromPile = () => {
     if (!canDrawFromPile || !gameId || !token || drawRequestInFlightRef.current) {
         return;
@@ -2006,6 +2139,8 @@ const drawFromDiscardPile = () => {
 
 const eventHasTurnCardDrag = (event: React.DragEvent<HTMLDivElement>) =>
     isDraggingTurnCard || Array.from(event.dataTransfer.types).includes(TURN_CARD_DRAG_MIME);
+const eventHasDiscardPileSwapCardDrag = (event: React.DragEvent<HTMLDivElement>) =>
+    isDraggingDiscardPileSwapCard || Array.from(event.dataTransfer.types).includes(DISCARD_PILE_SWAP_DRAG_MIME);
 
 const handleTurnCardDragStart = (event: React.DragEvent<HTMLDivElement>) => {
     if (!canDragSelectedTurnCard) {
@@ -2022,12 +2157,34 @@ const handleTurnCardDragStart = (event: React.DragEvent<HTMLDivElement>) => {
 
 const handleTurnCardDragEnd = () => {
     setIsDraggingTurnCard(false);
+    setIsDraggingDiscardPileSwapCard(false);
     setDragOverOwnCardIndex(null);
     setIsDragOverDiscardPile(false);
 };
 
+const handleDiscardPileCardDragStart = (event: React.DragEvent<HTMLDivElement>) => {
+    if (isDiscardPileSelectedForTurnAction && canDragSelectedTurnCard) {
+        handleTurnCardDragStart(event);
+        return;
+    }
+
+    if (!canDrawFromDiscardPile || !gameId || !token) {
+        event.preventDefault();
+        return;
+    }
+
+    setIsDraggingTurnCard(false);
+    setIsDraggingDiscardPileSwapCard(true);
+    setDragOverOwnCardIndex(null);
+    setIsDragOverDiscardPile(false);
+    event.dataTransfer.setData(DISCARD_PILE_SWAP_DRAG_MIME, "discard-pile-swap-card");
+    event.dataTransfer.effectAllowed = "move";
+};
+
 const handleOwnCardDragOver = (event: React.DragEvent<HTMLDivElement>, ownCardIndex: number) => {
-    if (!canSwapDrawnCardWithHand || !eventHasTurnCardDrag(event)) {
+    const swappingDrawnCard = canSwapDrawnCardWithHand && eventHasTurnCardDrag(event);
+    const swappingDiscardTop = canDrawFromDiscardPile && eventHasDiscardPileSwapCardDrag(event);
+    if (!swappingDrawnCard && !swappingDiscardTop) {
         return;
     }
 
@@ -2048,15 +2205,22 @@ const handleOwnCardDragLeave = (ownCardIndex: number) => {
 };
 
 const handleOwnCardDrop = (event: React.DragEvent<HTMLDivElement>, ownCardIndex: number) => {
-    if (!canSwapDrawnCardWithHand || !eventHasTurnCardDrag(event)) {
+    const swappingDrawnCard = canSwapDrawnCardWithHand && eventHasTurnCardDrag(event);
+    const swappingDiscardTop = canDrawFromDiscardPile && eventHasDiscardPileSwapCardDrag(event);
+    if (!swappingDrawnCard && !swappingDiscardTop) {
         return;
     }
 
     event.preventDefault();
     setIsDraggingTurnCard(false);
+    setIsDraggingDiscardPileSwapCard(false);
     setDragOverOwnCardIndex(null);
     setIsDragOverDiscardPile(false);
-    swapDrawnCardWithHand(ownCardIndex);
+    if (swappingDrawnCard) {
+        swapDrawnCardWithHand(ownCardIndex);
+        return;
+    }
+    swapDiscardPileTopWithHand(ownCardIndex);
 };
 
 const handleDiscardPileDragOver = (event: React.DragEvent<HTMLDivElement>) => {
@@ -2087,6 +2251,7 @@ const handleDiscardPileDrop = (event: React.DragEvent<HTMLDivElement>) => {
 
     event.preventDefault();
     setIsDraggingTurnCard(false);
+    setIsDraggingDiscardPileSwapCard(false);
     setDragOverOwnCardIndex(null);
     setIsDragOverDiscardPile(false);
     discardDrawnCard();
@@ -2221,6 +2386,7 @@ useEffect(() => {
 useEffect(() => {
     if (!canDragSelectedTurnCard) {
         setIsDraggingTurnCard(false);
+        setIsDraggingDiscardPileSwapCard(false);
         setDragOverOwnCardIndex(null);
         setIsDragOverDiscardPile(false);
     }
@@ -2616,8 +2782,8 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           drawFromDiscardPile();
                                       }
                                   }}
-                                  draggable={isDiscardPileSelectedForTurnAction && canDragSelectedTurnCard}
-                                  onDragStart={handleTurnCardDragStart}
+                                  draggable={canDrawFromDiscardPile || (isDiscardPileSelectedForTurnAction && canDragSelectedTurnCard)}
+                                  onDragStart={handleDiscardPileCardDragStart}
                                   onDragEnd={handleTurnCardDragEnd}
                                   onDragOver={handleDiscardPileDragOver}
                                   onDragEnter={handleDiscardPileDragOver}
@@ -2687,8 +2853,8 @@ const playerListRows = tablePlayerIds.map((id) => {
                       >
                           {isCaboCalledGlobal
                               ? (isCaboForcedByTimeoutGlobal
-                                  ? "Cabo Called due to AFK/DC. Last Round!"
-                                  : "Cabo Called. Last Round!")
+                                  ? <>Cabo Called (AFK/DC)!<br />Last Round!</>
+                                  : <>Cabo Called!<br />Last Round!</>)
                               : "Call Cabo"}
                       </Button>
                   </div>
@@ -2716,8 +2882,8 @@ const playerListRows = tablePlayerIds.map((id) => {
                             !isPeekCardSelected &&
                             revealedPeekCount < 2;
                           const isSwapDropTarget =
-                              isDraggingTurnCard &&
-                              canSwapDrawnCardWithHand &&
+                              (isDraggingTurnCard || isDraggingDiscardPileSwapCard) &&
+                              (canSwapDrawnCardWithHand || canDrawFromDiscardPile) &&
                               dragOverOwnCardIndex === i;
 
                           const cardStyle: React.CSSProperties | undefined = isPeekPhase
