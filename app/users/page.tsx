@@ -30,14 +30,15 @@ const columns: TableProps<UserRow>["columns"] = [
     dataIndex: "username",
     key: "username",
     align: "left",
-    ellipsis: true,
+    className: "users-username-col",
+    width: "42%",
     sorter: (a, b) =>
       String(a.username ?? a.name ?? "").localeCompare(
         String(b.username ?? b.name ?? ""),
       ),
     sortDirections: ["ascend", "descend"],
     render: (value, row) => {
-      const username = String(value ?? row.name ?? "-");
+      const username = String(value ?? row.name ?? "-").trim() || "-";
       return (
         <span className="users-username-cell" title={username}>
           {username}

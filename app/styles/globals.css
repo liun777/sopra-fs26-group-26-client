@@ -551,10 +551,16 @@ h1 {
   display: block;
   width: 100%;
   max-width: 100%;
+  letter-spacing: normal;
+  word-spacing: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.25;
+}
+
+.users-overview-table .users-username-col {
+  min-width: 14.5rem;
 }
 
 .table-ellipsis-text {
@@ -1823,18 +1829,22 @@ body.cabo-reconnect-active .cabo-invite-corner {
 }
 
 .game-turn-action-buttons {
+  --game-turn-action-btn-width: max(11ch, 8.75rem);
   margin-top: 8px;
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--game-turn-action-btn-width) var(--game-turn-action-btn-width);
   justify-content: center;
   gap: 8px;
-  flex-wrap: nowrap;
-  width: min(320px, 92vw);
+  width: fit-content;
+  max-width: 100%;
   margin-inline: auto;
 }
 
 .game-turn-action-buttons .ant-btn {
+  width: 100%;
   min-width: 0;
-  flex: 1 1 0;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 .game-turn-action-btn.ant-btn,
@@ -2005,13 +2015,13 @@ body.cabo-reconnect-active .cabo-invite-corner {
   }
 
   .game-turn-action-buttons {
+    --game-turn-action-btn-width: max(10ch, 7.75rem);
     gap: 6px;
   }
 
   .game-turn-action-buttons .ant-btn {
     min-width: 0;
-    flex: 1 1 0;
     font-size: 12px;
-    padding-inline: 8px;
+    padding-inline: 10px;
   }
 }

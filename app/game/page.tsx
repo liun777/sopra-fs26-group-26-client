@@ -848,11 +848,17 @@ const Game = () => {
       const setDiscardTopOverrideUntilClear = (card: Card | null, delayMs: number | null = null) => {
           clearDiscardTopOverrideTimer();
           setDiscardTopAnimationOverride(card);
-          if (delayMs != null && delayMs > 0) {
+          const resolvedDelayMs =
+              delayMs != null
+                  ? delayMs
+                  : card
+                      ? FLYING_CARD_ANIMATION_MS + 300
+                      : null;
+          if (resolvedDelayMs != null && resolvedDelayMs > 0) {
               discardTopOverrideTimeoutRef.current = window.setTimeout(() => {
                   setDiscardTopAnimationOverride(null);
                   discardTopOverrideTimeoutRef.current = null;
-              }, delayMs);
+              }, resolvedDelayMs);
           }
       };
 
@@ -1090,10 +1096,9 @@ const Game = () => {
                                           : normalizedTouchedIndex != null
                                               ? normalizedTouchedIndex
                                               : null;
-                                  const fallbackTargetIndex = Math.max(0, Math.min(HAND_SIZE - 1, Math.floor(HAND_SIZE / 2)));
                                   const targetAnchor = resolvedTargetIndex != null
                                       ? getCardAnchorByPlayerId(resolvedActingPlayerId, resolvedTargetIndex)
-                                      : getCardAnchorByPlayerId(resolvedActingPlayerId, fallbackTargetIndex);
+                                      : null;
                                   const discardAnchor = discardPileCardRef.current;
                                   const drawAnchor = drawPileCardRef.current;
                                   const sourceAnchor = pendingAnimation.source === "discard_pile"
@@ -1113,6 +1118,8 @@ const Game = () => {
                                               hidden: true,
                                           });
                                       } else if (pendingAnimation.source === "draw_pile" && drawAnchor) {
+                                          // No changed/touched hand slot means this was likely an automatic
+                                          // draw+discard timeout path; animate directly to discard.
                                           launchFlyingCardAnimation(drawAnchor, discardAnchor, {
                                               hidden: true,
                                           });
@@ -1129,6 +1136,31 @@ const Game = () => {
                                   }
                                   pendingRemoteDrawAnimationRef.current = null;
                               } else {
+                                  setDiscardTopOverrideUntilClear(null);
+                              }
+                          }
+
+                          if (
+                              !handledByExplicitMoveEvent &&
+                              canAnimateOtherPlayerMove &&
+                              !previousDrawnCardPresent &&
+                              !nextDrawnCardPresent &&
+                              discardChanged
+                          ) {
+                              const resolvedActingPlayerId = actingPlayerId as number;
+                              const previousActingHand = previousPlayerCardsById[resolvedActingPlayerId];
+                              const nextActingHand = effectiveNextPlayerCardsById[resolvedActingPlayerId];
+                              const changedIndices = findChangedHandIndices(previousActingHand, nextActingHand);
+                              const touchedIndices = touchedHandIndicesByPlayerId[resolvedActingPlayerId] ?? [];
+                              if (changedIndices.length === 0 && touchedIndices.length === 0) {
+                                  const drawAnchor = drawPileCardRef.current;
+                                  const discardAnchor = discardPileCardRef.current;
+                                  if (drawAnchor && discardAnchor) {
+                                      launchFlyingCardAnimation(drawAnchor, discardAnchor, {
+                                          hidden: true,
+                                      });
+                                  }
+                                  pendingRemoteDrawAnimationRef.current = null;
                                   setDiscardTopOverrideUntilClear(null);
                               }
                           }
@@ -1768,6 +1800,9 @@ const refreshDiscardPileTop = async (activeGameId: string) => {
             `/games/${activeGameId}/discard-pile/top`
         );
         setDiscardTopCard(topCard ?? null);
+        // Use authoritative server state on explicit refreshes.
+        clearDiscardTopOverrideTimer();
+        setDiscardTopAnimationOverride(null);
     } catch (error) {
         console.error("Failed to refresh discard pile top card:", error);
     }
@@ -1838,14 +1873,14 @@ useEffect(() => {
         if (typeof document !== "undefined" && document.visibilityState === "hidden") {
             return;
         }
-        clearDiscardTopOverrideTimer();
-        setDiscardTopAnimationOverride(null);
         void refreshDiscardPileTop(gameId);
     };
 
+    const intervalId = window.setInterval(resyncDiscardPileTop, 6000);
     window.addEventListener("focus", resyncDiscardPileTop, { passive: true });
     document.addEventListener("visibilitychange", resyncDiscardPileTop);
     return () => {
+        window.clearInterval(intervalId);
         window.removeEventListener("focus", resyncDiscardPileTop);
         document.removeEventListener("visibilitychange", resyncDiscardPileTop);
     };

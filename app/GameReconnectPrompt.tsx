@@ -6,7 +6,7 @@ import { Button } from "antd";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const STATUS_POLL_MS = 4000;
+const STATUS_POLL_MS = 12000;
 
 type SelfState = {
   status: string;
@@ -27,41 +27,6 @@ function isAuthRoute(pathname: string): boolean {
 
 function isGameRoute(pathname: string): boolean {
   return pathname === "/game" || pathname.startsWith("/game/");
-}
-
-function extractGameId(raw: unknown): string {
-  if (!raw || typeof raw !== "object") {
-    return "";
-  }
-
-  const record = raw as Record<string, unknown>;
-  const directGameId = normalizeString(
-    record.currentGameId ?? record.activeGameId ?? record.gameId,
-  );
-  if (directGameId) {
-    return directGameId;
-  }
-
-  const nestedGame = record.game;
-  if (!nestedGame || typeof nestedGame !== "object") {
-    return "";
-  }
-
-  const nestedRecord = nestedGame as Record<string, unknown>;
-  return normalizeString(
-    nestedRecord.gameId ?? nestedRecord.currentGameId ?? nestedRecord.id,
-  );
-}
-
-function parseSelfState(raw: unknown): SelfState {
-  if (!raw || typeof raw !== "object") {
-    return { status: "", gameId: "" };
-  }
-  const record = raw as Record<string, unknown>;
-  return {
-    status: normalizeString(record.status).toUpperCase(),
-    gameId: extractGameId(raw),
-  };
 }
 
 export default function GameReconnectPrompt() {
@@ -106,31 +71,17 @@ export default function GameReconnectPrompt() {
     }
 
     try {
-      const me = await api.getWithAuth<unknown>(
-        `/users/${encodeURIComponent(userIdValue)}`,
+      const activeGame = await api.getWithAuth<ActiveGameResponse>(
+        "/games/active",
         tokenValue,
       );
-      const parsed = parseSelfState(me);
-
-      try {
-        const activeGame = await api.getWithAuth<ActiveGameResponse>(
-          "/games/active",
-          tokenValue,
-        );
-        const gameId = normalizeString(activeGame?.gameId);
-        if (gameId) {
-          parsed.gameId = gameId;
-          if (!parsed.status || parsed.status !== "PLAYING") {
-            parsed.status = "PLAYING";
-          }
-        }
-      } catch {
-        // Fallback to status-only response when active game lookup is temporarily unavailable.
+      const gameId = normalizeString(activeGame?.gameId);
+      if (!gameId) {
+        return { status: "", gameId: "" };
       }
-
-      return parsed;
+      return { status: "PLAYING", gameId };
     } catch {
-      return null;
+      return { status: "", gameId: "" };
     }
   }, [api, tokenValue, userIdValue]);
 
