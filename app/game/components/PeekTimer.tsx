@@ -44,6 +44,7 @@ const PeekTimer: React.FC<PeekTimerProps> = ({
         progress > 60 ? "#4caf50" :
         progress > 30 ? "#ff9800" :
         "#f44336";
+    const displayedTimeLeft = timeLeft > 0 ? Math.max(0, timeLeft - 1) : 0;
 
     return (
         <div style={{
@@ -85,7 +86,7 @@ const PeekTimer: React.FC<PeekTimerProps> = ({
                 marginBottom: "12px",
                 lineHeight: 1,
             }}>
-                {timeLeft}
+                {displayedTimeLeft}
             </p>
 
             {/* progressbar */}

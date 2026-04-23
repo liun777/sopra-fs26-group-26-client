@@ -32,6 +32,7 @@ type WaitingView = {
   initialPeekSeconds?: number;
   turnSeconds?: number;
   abilityRevealSeconds?: number;
+  abilitySwapSeconds?: number;
   rematchDecisionSeconds?: number;
   players?: WaitingRow[];
 };
@@ -81,6 +82,7 @@ type LobbyTimerSettings = {
   initialPeekSeconds: number;
   turnSeconds: number;
   abilityRevealSeconds: number;
+  abilitySwapSeconds: number;
   rematchDecisionSeconds: number;
 };
 
@@ -94,6 +96,7 @@ const DEFAULT_LOBBY_TIMERS: LobbyTimerSettings = {
   initialPeekSeconds: 10,
   turnSeconds: 30,
   abilityRevealSeconds: 5,
+  abilitySwapSeconds: 10,
   rematchDecisionSeconds: 60,
 };
 
@@ -103,6 +106,7 @@ const TIMER_LIMITS = {
   initialPeekSeconds: { min: 3, max: 60 },
   turnSeconds: { min: 10, max: 60 },
   abilityRevealSeconds: { min: 3, max: 10 },
+  abilitySwapSeconds: { min: 5, max: 30 },
   rematchDecisionSeconds: { min: 10, max: 60 },
 } as const;
 
@@ -370,6 +374,7 @@ function WaitingLobbyContent() {
   const [updatingTimerKey, setUpdatingTimerKey] = useState<string>("");
   const [readyByUsername, setReadyByUsername] = useState<Record<string, boolean>>({});
   const [startingGame, setStartingGame] = useState(false);
+  const [leavingLobby, setLeavingLobby] = useState(false);
   const [, setLaunchingGame] = useState(false);
   const [lobbyAfkRemainingSeconds, setLobbyAfkRemainingSeconds] = useState<number>(DEFAULT_LOBBY_TIMERS.afkTimeoutSeconds);
   const lastLobbyActivityMsRef = useRef<number>(Date.now());
@@ -624,6 +629,11 @@ function WaitingLobbyContent() {
             "abilityRevealSeconds",
             previous.abilityRevealSeconds,
           ),
+          abilitySwapSeconds: resolveTimerSettingFromView(
+            waitingView,
+            "abilitySwapSeconds",
+            previous.abilitySwapSeconds,
+          ),
           rematchDecisionSeconds: resolveTimerSettingFromView(
             waitingView,
             "rematchDecisionSeconds",
@@ -637,6 +647,7 @@ function WaitingLobbyContent() {
           nextSettings.initialPeekSeconds === previous.initialPeekSeconds &&
           nextSettings.turnSeconds === previous.turnSeconds &&
           nextSettings.abilityRevealSeconds === previous.abilityRevealSeconds &&
+          nextSettings.abilitySwapSeconds === previous.abilitySwapSeconds &&
           nextSettings.rematchDecisionSeconds === previous.rematchDecisionSeconds;
 
         return unchanged ? previous : nextSettings;
@@ -1063,20 +1074,65 @@ function WaitingLobbyContent() {
       }
     } catch (error: unknown) {
       const status = (error as ApplicationError)?.status;
-      const message = error instanceof Error ? error.message : "";
-      if (status === 409) {
+      const rawMessage = error instanceof Error ? error.message : "";
+      const message = rawMessage.toLowerCase();
+      if (status === 409 || message.includes("not in waiting state")) {
         alert("Could not start game. Lobby is not ready.");
-      } else if (status === 400 && message.toLowerCase().includes("player disconnected")) {
+      } else if ((status === 400 && message.includes("player disconnected")) || message.includes("player disconnected")) {
         alert("Could not start game. A player appears disconnected. Ask everyone to reopen the lobby page.");
+      } else if (status === 403 || message.includes("only the session host")) {
+        alert("Could not start game. Only the host can start this lobby.");
+      } else if (status === 404 || message.includes("session could not be found")) {
+        alert("Could not start game. Lobby session was not found. Reopen the lobby from dashboard.");
       } else {
+        const fallbackDetail = rawMessage.trim();
         alert(
           status
-            ? `Could not start game (HTTP ${status}). Please try again.`
-            : "Could not start game. Please try again.",
+            ? `Could not start game (HTTP ${status}). ${fallbackDetail || "Please try again."}`
+            : `Could not start game. ${fallbackDetail || "Please try again."}`,
         );
       }
     } finally {
       setStartingGame(false);
+    }
+  };
+
+  const handleLeaveLobby = async () => {
+    if (leavingLobby) {
+      return;
+    }
+
+    const authToken = token.trim();
+    const uid = userId.trim();
+    const sid = sessionId.trim();
+    if (!authToken || !uid || !sid) {
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm("Leave this lobby and return to dashboard?");
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setLeavingLobby(true);
+    try {
+      await api.deleteWithAuth(
+        `/lobbies/${encodeURIComponent(sid)}/players/${uid}`,
+        authToken,
+      );
+      router.push("/dashboard");
+    } catch (error: unknown) {
+      const status = (error as ApplicationError)?.status;
+      const detail = error instanceof Error ? error.message.trim() : "";
+      alert(
+        status
+          ? `Could not leave lobby (HTTP ${status}). ${detail || "Please try again."}`
+          : `Could not leave lobby. ${detail || "Please try again."}`,
+      );
+    } finally {
+      setLeavingLobby(false);
     }
   };
 
@@ -1454,6 +1510,34 @@ function WaitingLobbyContent() {
                       <span className="lobby-setting-row-value">{lobbyTimerSettings.abilityRevealSeconds}s</span>
                     </div>
                   </div>
+                  <div className="lobby-setting-row">
+                    <span className="lobby-setting-row-label">Swap Ability (sec)</span>
+                    <div className="lobby-setting-row-control">
+                      <Slider
+                        min={TIMER_LIMITS.abilitySwapSeconds.min}
+                        max={TIMER_LIMITS.abilitySwapSeconds.max}
+                        step={1}
+                        marks={{
+                          [TIMER_LIMITS.abilitySwapSeconds.min]: String(TIMER_LIMITS.abilitySwapSeconds.min),
+                          10: "10",
+                          20: "20",
+                          [TIMER_LIMITS.abilitySwapSeconds.max]: String(TIMER_LIMITS.abilitySwapSeconds.max),
+                        }}
+                        value={lobbyTimerSettings.abilitySwapSeconds}
+                        disabled={updatingTimerKey === "abilitySwapSeconds"}
+                        onChange={(nextValue) => {
+                          const numeric = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+                          const clamped = clampTimerValue("abilitySwapSeconds", Number(numeric));
+                          setLobbyTimerSettings((prev) => ({
+                            ...prev,
+                            abilitySwapSeconds: clamped,
+                          }));
+                          scheduleLobbyTimerSettingUpdate("abilitySwapSeconds", clamped);
+                        }}
+                      />
+                      <span className="lobby-setting-row-value">{lobbyTimerSettings.abilitySwapSeconds}s</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -1488,15 +1572,9 @@ function WaitingLobbyContent() {
               <Button
                 type="primary"
                 className="lobby-leave-btn"
-                onClick={() => {
-                  const authToken = token.trim();
-                  const uid = userId.trim();
-                  if (!authToken || !uid || !sessionId) return;
-                    void api.deleteWithAuth(
-                    `/lobbies/${encodeURIComponent(sessionId)}/players/${uid}`,
-                    authToken,
-                  ).then(() => router.push("/dashboard"));
-                }}
+                disabled={leavingLobby}
+                loading={leavingLobby}
+                onClick={() => void handleLeaveLobby()}
               >
                 Leave Lobby
               </Button>

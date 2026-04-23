@@ -395,33 +395,21 @@ const UserProfilePage: React.FC = () => {
       setLoadingResults(true);
 
       const authToken = String(token ?? "").trim();
-      const resultEndpoints = [
-        `/users/${encodeURIComponent(viewedUserId)}/results`,
-        `/users/${encodeURIComponent(viewedUserId)}/games`,
-        `/games/users/${encodeURIComponent(viewedUserId)}`,
-      ];
+      const endpoint = `/users/${encodeURIComponent(viewedUserId)}/results`;
 
-      for (const endpoint of resultEndpoints) {
-        try {
-          const response = authToken
-            ? await apiService.getWithAuth<unknown>(endpoint, authToken)
-            : await apiService.get<unknown>(endpoint);
+      try {
+        const response = authToken
+          ? await apiService.getWithAuth<unknown>(endpoint, authToken)
+          : await apiService.get<unknown>(endpoint);
 
-          if (active) {
-            setResultsRaw(response);
-          }
-          return;
-        } catch (error: unknown) {
-          const status = (error as ApplicationError)?.status;
-          if (status === 404 || status === 405) {
-            continue;
-          }
-
+        if (active) {
+          setResultsRaw(response);
+        }
+        return;
+      } catch (error: unknown) {
+        const status = (error as ApplicationError)?.status;
+        if (status !== 404 && status !== 405) {
           console.error("Could not load user game results:", error);
-          if (active) {
-            setResultsRaw([]);
-          }
-          return;
         }
       }
 

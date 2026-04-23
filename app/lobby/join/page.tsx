@@ -18,9 +18,6 @@ type LobbyGetDTO = {
     currentPlayers?: number | null;
     isPublic?: boolean | null;
     sessionHostUserId?: number | string | null;
-    hostUserId?: number | string | null;
-    sessionHostUsername?: string | null;
-    hostUsername?: string | null;
 };
 
 type OpenLobbyRow = {
@@ -46,11 +43,7 @@ const EMPTY_OPEN_LOBBY_ROW: OpenLobbyRow = {
 };
 
 function extractLobbyList(raw: unknown): LobbyGetDTO[] {
-    const rows = Array.isArray(raw)
-        ? raw
-        : Array.isArray((raw as { publicLobbies?: unknown[] })?.publicLobbies)
-            ? ((raw as { publicLobbies?: unknown[] }).publicLobbies ?? [])
-            : [];
+    const rows = Array.isArray(raw) ? raw : [];
     return rows.map((item) => item as LobbyGetDTO);
 }
 
@@ -69,14 +62,11 @@ function toOpenLobbyRows(
             const currentPlayers = Number(
                 lobby?.currentPlayers ?? currentPlayersFromIds ?? 0,
             );
-            const hostUserId = String(lobby?.sessionHostUserId ?? lobby?.hostUserId ?? "").trim();
-            const hostUsernameFromLobby =
-                String(lobby?.sessionHostUsername ?? lobby?.hostUsername ?? "").trim();
+            const hostUserId = String(lobby?.sessionHostUserId ?? "").trim();
             const hostUsernameFromUsers = hostUserId ? String(hostUsernamesById[hostUserId] ?? "").trim() : "";
             return {
                 sessionId,
                 hostLabel:
-                    hostUsernameFromLobby ||
                     hostUsernameFromUsers ||
                     (hostUserId ? `User ${hostUserId}` : "Host"),
                 currentPlayers: Number.isFinite(currentPlayers) ? currentPlayers : 0,
@@ -110,7 +100,7 @@ function toUsernameMap(users: User[]): Record<string, string> {
 function extractHostIds(raw: unknown): string[] {
     const ids = new Set<string>();
     for (const lobby of extractLobbyList(raw)) {
-        const hostId = String(lobby?.sessionHostUserId ?? lobby?.hostUserId ?? "").trim();
+        const hostId = String(lobby?.sessionHostUserId ?? "").trim();
         if (hostId) {
             ids.add(hostId);
         }

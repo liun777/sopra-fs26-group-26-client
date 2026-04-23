@@ -1226,10 +1226,21 @@ body.cabo-reconnect-active .cabo-invite-corner {
 }
 
 .lobby-leave-btn.ant-btn-primary,
+.lobby-leave-btn.ant-btn-primary:hover,
+.lobby-leave-btn.ant-btn-primary:focus {
+  width: 100%;
+  background-color: #c0392b !important;
+  border-color: #9e2f24 !important;
+  color: #ffffff !important;
+  cursor: pointer !important;
+}
+
 .lobby-leave-btn.ant-btn-primary.ant-btn-disabled,
 .lobby-leave-btn.ant-btn-primary:disabled,
 .lobby-leave-btn.ant-btn-primary.ant-btn-disabled:hover,
-.lobby-leave-btn.ant-btn-primary:disabled:hover {
+.lobby-leave-btn.ant-btn-primary:disabled:hover,
+.lobby-leave-btn.ant-btn-primary.ant-btn-disabled:focus,
+.lobby-leave-btn.ant-btn-primary:disabled:focus {
   width: 100%;
   background-color: #c0392b !important;
   border-color: #9e2f24 !important;
@@ -1385,6 +1396,13 @@ body.cabo-reconnect-active .cabo-invite-corner {
   backdrop-filter: blur(2px);
 }
 
+.game-rematch-overlay-cabo-reveal {
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  backdrop-filter: none;
+}
+
 .game-rematch-card {
   width: min(92vw, 560px);
   padding: 22px 24px;
@@ -1394,6 +1412,12 @@ body.cabo-reconnect-active .cabo-invite-corner {
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.52);
   text-align: center;
   color: #f4f8ff;
+}
+
+.game-rematch-card-cabo-reveal {
+  width: min(92vw, 520px);
+  padding: 14px 18px;
+  background: rgba(18, 22, 30, 0.78);
 }
 
 .game-rematch-title {
@@ -1539,6 +1563,30 @@ body.cabo-reconnect-active .cabo-invite-corner {
   background-size: cover;
   background-position: center;
   border-radius: 8px;
+  position: relative;
+  overflow: visible;
+}
+
+.card-ability-label {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 10px;
+  border: 1px solid #d9c4ff;
+  background: rgba(78, 46, 126, 0.94);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(35, 20, 58, 0.45);
+  pointer-events: none;
+  z-index: 2;
 }
 
 .card.small {
@@ -1747,7 +1795,7 @@ body.cabo-reconnect-active .cabo-invite-corner {
   position: fixed;
   pointer-events: none;
   will-change: transform, opacity, filter;
-  animation: gameCardFlyAcross 1.50s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation: gameCardFlyAcross 3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 @keyframes gameCardFlyAcross {
@@ -2023,5 +2071,139 @@ body.cabo-reconnect-active .cabo-invite-corner {
     min-width: 0;
     font-size: 12px;
     padding-inline: 10px;
+  }
+}
+
+/* page loading animation */
+.page-transition-loader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(117, 189, 157, 0.2), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(34, 66, 107, 0.42), transparent 42%),
+    rgba(10, 14, 20, 0.68);
+  backdrop-filter: blur(3px);
+}
+
+.page-transition-loader-overlay-static {
+  position: fixed;
+}
+
+.page-transition-loader-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.page-transition-loader-stack {
+  position: relative;
+  width: 192px;
+  height: 94px;
+}
+
+.page-transition-loader-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 66px;
+  margin-left: -23px;
+  margin-top: -33px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform-origin: 50% 96%;
+  transform: translate(var(--shuffle-start-x), var(--shuffle-start-y))
+    rotate(var(--shuffle-start-rot));
+  animation: page-loader-casino-riffle 1.02s cubic-bezier(0.24, 0.08, 0.18, 0.96) infinite;
+  animation-delay: var(--shuffle-delay, 0s);
+  will-change: transform;
+}
+
+.page-transition-loader-label {
+  color: #f3f6fa;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  animation: page-loader-label-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes page-loader-casino-riffle {
+  0% {
+    transform: translate(var(--shuffle-start-x), var(--shuffle-start-y))
+      rotate(var(--shuffle-start-rot));
+  }
+  20% {
+    transform: translate(var(--shuffle-approach-x), var(--shuffle-approach-y))
+      rotate(var(--shuffle-approach-rot));
+  }
+  42% {
+    transform: translate(var(--shuffle-interleave-x), var(--shuffle-interleave-y))
+      rotate(var(--shuffle-interleave-rot));
+  }
+  58% {
+    transform: translate(var(--shuffle-interleave-x), calc(var(--shuffle-interleave-y) - 5px))
+      rotate(0deg);
+  }
+  76% {
+    transform: translate(var(--shuffle-pack-x), var(--shuffle-pack-y))
+      rotate(var(--shuffle-pack-rot));
+  }
+  100% {
+    transform: translate(var(--shuffle-end-x), var(--shuffle-end-y))
+      rotate(var(--shuffle-end-rot));
+  }
+}
+
+@keyframes page-loader-gentle-riffle {
+  0% {
+    transform: translate(calc(var(--shuffle-start-x) * 0.55), calc(var(--shuffle-start-y) * 0.55))
+      rotate(calc(var(--shuffle-start-rot) * 0.55));
+  }
+  50% {
+    transform: translate(calc(var(--shuffle-interleave-x) * 0.65), calc(var(--shuffle-interleave-y) * 0.65))
+      rotate(calc(var(--shuffle-interleave-rot) * 0.65));
+  }
+  100% {
+    transform: translate(calc(var(--shuffle-end-x) * 0.55), calc(var(--shuffle-end-y) * 0.55))
+      rotate(calc(var(--shuffle-end-rot) * 0.55));
+  }
+}
+
+@keyframes page-loader-label-pulse {
+  0% {
+    opacity: 0.66;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.66;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition-loader-card {
+    animation: page-loader-gentle-riffle 1.6s ease-in-out infinite;
+  }
+
+  .page-transition-loader-label {
+    animation: page-loader-label-pulse 1.6s ease-in-out infinite;
   }
 }

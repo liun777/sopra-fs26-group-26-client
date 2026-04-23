@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { App as AntdApp, ConfigProvider, theme } from "antd";
 import { AntdRegistry } from "@ant-design/nextjs-registry";
+import { Suspense } from "react";
 import CaboInviteNotifications from "./CaboInviteNotifications";
 import GameReconnectPrompt from "./GameReconnectPrompt";
-import "@/styles/globals.css";
+import "./styles/globals.css";
 import DisconnectHandler from "./components/DisconnectHandler";
+import PageTransitionLoader from "./components/PageTransitionLoader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -66,6 +68,9 @@ export default function RootLayout({
           <AntdRegistry>
             <AntdApp>
               <DisconnectHandler />
+              <Suspense fallback={null}>
+                <PageTransitionLoader />
+              </Suspense>
               <GameReconnectPrompt />
               <CaboInviteNotifications />
               {children}

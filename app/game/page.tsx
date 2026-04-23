@@ -55,6 +55,8 @@ type GameStateSignal = {
     turnSeconds?: number | string | null;
     initialPeekSeconds?: number | string | null;
     abilityRevealSeconds?: number | string | null;
+    abilitySwapSeconds?: number | string | null;
+    caboRevealSeconds?: number | string | null;
     rematchDecisionSeconds?: number | string | null;
     afkTimeoutSeconds?: number | string | null;
     timedOutPlayerIds?: Array<number | string | null> | null;
@@ -70,6 +72,8 @@ type GameRuntimeConfigResponse = {
     turnSeconds?: number | string | null;
     initialPeekSeconds?: number | string | null;
     abilityRevealSeconds?: number | string | null;
+    abilitySwapSeconds?: number | string | null;
+    caboRevealSeconds?: number | string | null;
     afkTimeoutSeconds?: number | string | null;
     rematchDecisionSeconds?: number | string | null;
 };
@@ -128,6 +132,19 @@ type ParsedMoveEvent = {
     primary: ParsedMoveStep;
     secondary: ParsedMoveStep | null;
 };
+
+function getAbilityCardLabel(value?: number): string | undefined {
+    if (value === 7 || value === 8) {
+        return "PEEK";
+    }
+    if (value === 9 || value === 10) {
+        return "SPY";
+    }
+    if (value === 11 || value === 12) {
+        return "SWAP";
+    }
+    return undefined;
+}
 
 function normalizeValue(value: unknown): string {
     return String(value ?? "").trim().toLowerCase();
@@ -522,10 +539,11 @@ const Game = () => {
   const router = useRouter();
   const { value: activeSessionId, set: setActiveSessionId } = useLocalStorage<string>("activeSessionId", "");
   const gameId = activeSessionId.trim();
+  const { value: token } = useLocalStorage<string>("token", "");
   const HAND_SIZE = 4; // referencing here, keeps it consistent and less prone to errors
   const TURN_CARD_DRAG_MIME = "application/x-cabo-turn-card";
   const DISCARD_PILE_SWAP_DRAG_MIME = "application/x-cabo-discard-pile-swap";
-  const FLYING_CARD_ANIMATION_MS = 1500; // slower
+  const FLYING_CARD_ANIMATION_MS = 3000; // slower
   const createHiddenPeekCards = () => Array(HAND_SIZE).fill(false); // hide card by default
 
 
@@ -535,24 +553,26 @@ const Game = () => {
 
       //get the top card from the backend
       useEffect(() => {
-          if (!gameId) {
+          const authToken = token.trim();
+          if (!gameId || !authToken) {
               setDiscardTopCard(null);
               return;
           }
 
           const fetchDiscardTopCard = async () => {
               try {
-                  const card = await apiService.get<Card>(
-                      `/games/${gameId}/discard-pile/top`
+                  const card = await apiService.getWithAuth<Card | null>(
+                      `/games/${gameId}/discard-pile/top`,
+                      authToken
                   );
-                  setDiscardTopCard(card);
+                  setDiscardTopCard(card ?? null);
               } catch (error) {
                   console.error("Failed to fetch discard pile top card:", error);
               }
           };
 
           fetchDiscardTopCard();
-      }, [apiService, gameId]);
+      }, [apiService, gameId, token]);
 
       // 1st we get userID out of local storage
       const { value: userId } = useLocalStorage<string>("userId", "");
@@ -562,11 +582,12 @@ const Game = () => {
       // #17: Peek Phase Timer
       const [isPeekPhase, setIsPeekPhase] = useState<boolean>(false);
       // #15: player's own hand
-      const { value: token } = useLocalStorage<string>("token", "");
       const { value: pendingInitialPeekGameId, clear: clearPendingInitialPeekGameId } =
           useLocalStorage<string>("pendingInitialPeekGameId", "");
       const [gameStatus, setGameStatus] = useState<string>("");
+      const isCaboRevealPhase = gameStatus === "cabo_reveal";
       const isAwaitingRematchDecision = gameStatus === "round_awaiting_rematch";
+      const isPostRoundPhase = isCaboRevealPhase || isAwaitingRematchDecision;
       const [myHand, setMyHand] = useState<Card[]>([]);
       const [selectedPeekIndices, setSelectedPeekIndices] = useState<number[]>([]);
       const [isSubmittingInitialPeek, setIsSubmittingInitialPeek] = useState<boolean>(false);
@@ -575,12 +596,19 @@ const Game = () => {
       const DEFAULT_TURN_SECONDS = 30;
       const DEFAULT_INITIAL_PEEK_SECONDS = 10;
       const DEFAULT_ABILITY_REVEAL_SECONDS = 5;
-      const [rematchDecisionDuration, setRematchDecisionDuration] = useState<number>(60);
+      const DEFAULT_ABILITY_SWAP_SECONDS = 10;
+      const DEFAULT_ROUND_REVEAL_SECONDS = 30;
+      const [rematchDecisionDuration, setRematchDecisionDuration] = useState<number>(30);
+      const [caboRevealDurationSeconds, setCaboRevealDurationSeconds] =
+          useState<number>(DEFAULT_ROUND_REVEAL_SECONDS);
       const [turnDurationSeconds, setTurnDurationSeconds] = useState<number>(DEFAULT_TURN_SECONDS);
       const [initialPeekDurationSeconds, setInitialPeekDurationSeconds] =
           useState<number>(DEFAULT_INITIAL_PEEK_SECONDS);
       const [abilityRevealDurationSeconds, setAbilityRevealDurationSeconds] =
           useState<number>(DEFAULT_ABILITY_REVEAL_SECONDS);
+      const [abilitySwapDurationSeconds, setAbilitySwapDurationSeconds] =
+          useState<number>(DEFAULT_ABILITY_SWAP_SECONDS);
+      const [isAbilityRevealWindow, setIsAbilityRevealWindow] = useState<boolean>(false);
       const [isCaboCalledGlobal, setIsCaboCalledGlobal] = useState<boolean>(false);
       const [isCaboForcedByTimeoutGlobal, setIsCaboForcedByTimeoutGlobal] = useState<boolean>(false);
       const [afkTimeoutSeconds, setAfkTimeoutSeconds] = useState<number>(300);
@@ -621,6 +649,8 @@ const Game = () => {
       const currentTurnUserIdRef = useRef<number | null>(null);
       const lastActivityMsRef = useRef<number>(Date.now());
       const lastProcessedMoveSequenceRef = useRef<number>(0);
+      const lastGameStateSignalMsRef = useRef<number>(Date.now());
+      const lastAuthoritativeResyncMsRef = useRef<number>(0);
       const [orderedPlayerIds, setOrderedPlayerIds] = useState<number[]>([]);
       const [playerCardsById, setPlayerCardsById] = useState<Record<number, SeatCardView[]>>({});
       const [playerNamesById, setPlayerNamesById] = useState<Record<number, string>>({});
@@ -629,10 +659,13 @@ const Game = () => {
       const [turnTimeLeft, setTurnTimeLeft] = useState<number>(DEFAULT_TURN_SECONDS);
       const [isCallingCabo, setIsCallingCabo] = useState<boolean>(false);
       const [isSubmittingRematchDecision, setIsSubmittingRematchDecision] = useState<boolean>(false);
+      const [caboRevealCountdown, setCaboRevealCountdown] = useState<number>(0);
       const [rematchCountdown, setRematchCountdown] = useState<number>(0);
       const [myRematchDecision, setMyRematchDecision] = useState<string | null>(null);
       const turnDeadlineMsRef = useRef<number | null>(null);
+      const caboRevealDeadlineMsRef = useRef<number | null>(null);
       const rematchDeadlineMsRef = useRef<number | null>(null);
+      const consecutiveNotMyTurnPollsRef = useRef<number>(0);
 
       const parsedSelfUserId = Number(userId);
       const selfUserId = userId.trim() !== "" && Number.isFinite(parsedSelfUserId)
@@ -957,6 +990,40 @@ const Game = () => {
               reconnectDelay: 5000,
               onConnect: () => {
                   setSocketSynced(true);
+                  lastGameStateSignalMsRef.current = Date.now();
+                  // Catch up immediately after reconnect in case one or more websocket
+                  // game-state frames were missed while disconnected/backgrounded.
+                  void Promise.allSettled([
+                      apiService
+                          .getWithAuth<Card[]>(`/games/${gameId}/my-hand`, authToken)
+                          .then((hand) => setMyHand(hand)),
+                      apiService
+                          .getWithAuth<Card | null>(`/games/${gameId}/discard-pile/top`, authToken)
+                          .then((topCard) => {
+                              const normalizedTopCard = topCard ?? null;
+                              setDiscardTopCard(normalizedTopCard);
+                              discardTopCardRef.current = normalizedTopCard;
+                              clearDiscardTopOverrideTimer();
+                              setDiscardTopAnimationOverride(null);
+                          }),
+                      apiService
+                          .getWithAuth<unknown>(`/games/${gameId}/drawn-card`, authToken)
+                          .then((rawCard) => {
+                              const nextDrawnCard = toValidCardOrNull(rawCard);
+                              setDrawnCard(nextDrawnCard);
+                              drawnCardPresentRef.current = nextDrawnCard != null;
+                              if (!nextDrawnCard) {
+                                  setSelectedDrawSource(null);
+                                  setHasChosenDrawSourceThisTurn(false);
+                              }
+                          })
+                          .catch(() => {
+                              setDrawnCard(null);
+                              drawnCardPresentRef.current = false;
+                              setSelectedDrawSource(null);
+                              setHasChosenDrawSourceThisTurn(false);
+                          }),
+                  ]);
                   client.subscribe("/user/queue/game-state", (message) => {
                       try {
                           const payload = JSON.parse(String(message.body ?? "{}")) as GameStateSignal;
@@ -965,6 +1032,7 @@ const Game = () => {
                               return;
                           }
                           setSocketSynced(true);
+                          lastGameStateSignalMsRef.current = Date.now();
 
                           const nextStatus = extractGameStatus(payload);
                           if (nextStatus) {
@@ -997,9 +1065,17 @@ const Game = () => {
                           if (Number.isFinite(nextRematchSeconds) && nextRematchSeconds > 0) {
                               setRematchDecisionDuration(Math.floor(nextRematchSeconds));
                           }
+                          const nextCaboRevealSeconds = Number(payload?.caboRevealSeconds);
+                          if (Number.isFinite(nextCaboRevealSeconds) && nextCaboRevealSeconds > 0) {
+                              setCaboRevealDurationSeconds(Math.floor(nextCaboRevealSeconds));
+                          }
                           const nextAbilityRevealSeconds = Number(payload?.abilityRevealSeconds);
                           if (Number.isFinite(nextAbilityRevealSeconds) && nextAbilityRevealSeconds > 0) {
                               setAbilityRevealDurationSeconds(Math.floor(nextAbilityRevealSeconds));
+                          }
+                          const nextAbilitySwapSeconds = Number(payload?.abilitySwapSeconds);
+                          if (Number.isFinite(nextAbilitySwapSeconds) && nextAbilitySwapSeconds > 0) {
+                              setAbilitySwapDurationSeconds(Math.floor(nextAbilitySwapSeconds));
                           }
                           const nextAfkTimeout = Number(payload?.afkTimeoutSeconds);
                           if (Number.isFinite(nextAfkTimeout) && nextAfkTimeout > 0) {
@@ -1332,6 +1408,14 @@ const Game = () => {
                   if (Number.isFinite(nextAbilityRevealSeconds) && nextAbilityRevealSeconds > 0) {
                       setAbilityRevealDurationSeconds(Math.floor(nextAbilityRevealSeconds));
                   }
+                  const nextAbilitySwapSeconds = Number(config?.abilitySwapSeconds);
+                  if (Number.isFinite(nextAbilitySwapSeconds) && nextAbilitySwapSeconds > 0) {
+                      setAbilitySwapDurationSeconds(Math.floor(nextAbilitySwapSeconds));
+                  }
+                  const nextCaboRevealSeconds = Number(config?.caboRevealSeconds);
+                  if (Number.isFinite(nextCaboRevealSeconds) && nextCaboRevealSeconds > 0) {
+                      setCaboRevealDurationSeconds(Math.floor(nextCaboRevealSeconds));
+                  }
                   const nextRematchSeconds = Number(config?.rematchDecisionSeconds);
                   if (Number.isFinite(nextRematchSeconds) && nextRematchSeconds > 0) {
                       setRematchDecisionDuration(Math.floor(nextRematchSeconds));
@@ -1350,6 +1434,30 @@ const Game = () => {
               active = false;
           };
       }, [apiService, gameId, token]);
+
+      useEffect(() => {
+          if (!isCaboRevealPhase) {
+              setCaboRevealCountdown(0);
+              caboRevealDeadlineMsRef.current = null;
+              return;
+          }
+
+          caboRevealDeadlineMsRef.current = Date.now() + (caboRevealDurationSeconds * 1000);
+          const tick = () => {
+              const deadline = caboRevealDeadlineMsRef.current;
+              if (deadline == null) {
+                  setCaboRevealCountdown(0);
+                  return;
+              }
+              const remainingMs = Math.max(0, deadline - Date.now());
+              setCaboRevealCountdown(Math.max(0, Math.ceil(remainingMs / 1000)));
+          };
+          tick();
+          const intervalId = window.setInterval(tick, 250);
+          return () => {
+              window.clearInterval(intervalId);
+          };
+      }, [isCaboRevealPhase, caboRevealDurationSeconds]);
 
       useEffect(() => {
           if (!isAwaitingRematchDecision || !gameId || !token) {
@@ -1458,35 +1566,47 @@ const Game = () => {
           };
       }, [apiService, gameStatus, gameId, token, router, setActiveSessionId]);
 
-      const isAbilityPhaseForCountdown =
+      const isPeekOrSpyPhaseForCountdown =
           gameStatus === "ability_peek_self" ||
-          gameStatus === "ability_peek_opponent" ||
-          gameStatus === "ability_swap";
+          gameStatus === "ability_peek_opponent";
+      const isSwapPhaseForCountdown = gameStatus === "ability_swap";
+      const isAbilityPhaseForCountdown = isPeekOrSpyPhaseForCountdown || isSwapPhaseForCountdown;
       const showTurnCountdown =
           !isPeekPhase &&
           (gameStatus === "round_active" || isAbilityPhaseForCountdown) &&
           currentTurnUserId != null;
       const showCenterTurnCountdown =
           showTurnCountdown && selfUserId != null && currentTurnUserId === selfUserId;
+      const activeTurnWindowSeconds = isPeekOrSpyPhaseForCountdown
+          ? (isAbilityRevealWindow ? abilityRevealDurationSeconds : turnDurationSeconds)
+          : isSwapPhaseForCountdown
+              ? abilitySwapDurationSeconds
+              : turnDurationSeconds;
       const isCurrentTurnMine = selfUserId != null && currentTurnUserId === selfUserId;
-      const isMyTurnUi = isCurrentTurnMine && !isPeekPhase && !isAwaitingRematchDecision;
+      const isMyTurnUi = isCurrentTurnMine && !isPeekPhase && !isPostRoundPhase;
       const afkWarningLeadSeconds = getAfkWarningLeadSeconds(afkTimeoutSeconds);
       const showAfkWarning =
-          !isAwaitingRematchDecision &&
+          !isPostRoundPhase &&
           gameStatus !== "round_ended" &&
           afkRemainingSeconds <= afkWarningLeadSeconds;
+      const toDisplayedSeconds = (seconds: number): number =>
+          seconds > 0 ? Math.max(0, seconds - 1) : 0;
+      const displayedTurnTimeLeft = toDisplayedSeconds(turnTimeLeft);
+      const displayedCaboRevealCountdown = toDisplayedSeconds(caboRevealCountdown);
+      const displayedRematchCountdown = toDisplayedSeconds(rematchCountdown);
+      const displayedAfkRemainingSeconds = toDisplayedSeconds(afkRemainingSeconds);
       useEffect(() => {
           if (!showTurnCountdown) {
-              setTurnTimeLeft(turnDurationSeconds);
+              setTurnTimeLeft(activeTurnWindowSeconds);
               turnDeadlineMsRef.current = null;
               return;
           }
 
-          turnDeadlineMsRef.current = Date.now() + (turnDurationSeconds * 1000);
+          turnDeadlineMsRef.current = Date.now() + (activeTurnWindowSeconds * 1000);
           const tick = () => {
               const deadline = turnDeadlineMsRef.current;
               if (deadline == null) {
-                  setTurnTimeLeft(turnDurationSeconds);
+                  setTurnTimeLeft(activeTurnWindowSeconds);
                   return;
               }
               const remainingMs = Math.max(0, deadline - Date.now());
@@ -1498,7 +1618,7 @@ const Game = () => {
           return () => {
               window.clearInterval(intervalId);
           };
-      }, [showTurnCountdown, currentTurnUserId, turnDurationSeconds]);
+      }, [showTurnCountdown, currentTurnUserId, gameStatus, activeTurnWindowSeconds]);
 
       useEffect(() => {
           const fetchDrawnCard = async () => {
@@ -1597,6 +1717,10 @@ const visibleDiscardPileCard =
     isDiscardPileSelectedForTurnAction && drawnCard
         ? drawnCard
         : (discardTopAnimationOverride ?? discardTopCard);
+const drawPileAbilityLabel =
+    isCurrentTurnMine && showDrawPileAsRevealedCard
+        ? getAbilityCardLabel(drawnCard?.value)
+        : undefined;
 const canDragSelectedTurnCard =
     (isDrawPileSelectedForTurnAction && (canSwapDrawnCardWithHand || canDiscardDrawnCard)) ||
     (isDiscardPileSelectedForTurnAction && canSwapDrawnCardWithHand);
@@ -1671,6 +1795,7 @@ useEffect(() => {
         setIsAbilityChoicePending(false);
         setIsUseAbilitySelected(false);
         setIsSkippingAbilityChoice(false);
+        setIsAbilityRevealWindow(false);
         resetAbilitySelection();
         return;
     }
@@ -1680,6 +1805,7 @@ useEffect(() => {
         seenAbilityPhaseRef.current = abilityTurnKey;
         setIsAbilityChoicePending(true);
         setIsUseAbilitySelected(false);
+        setIsAbilityRevealWindow(false);
     }
 }, [isAbilityPending, isCurrentTurnMine, currentTurnUserId, gameStatus]);
 
@@ -1694,6 +1820,16 @@ useEffect(() => {
     clearAbilityPeekHideTimer();
     setPeekVisibleCards(createHiddenPeekCards());
 }, [isPeekPhase, isCurrentTurnMine, gameStatus, currentTurnUserId, isUseAbilitySelected]);
+
+// Recover from rare local state drift where ability choice UI gets stuck hidden.
+useEffect(() => {
+    if (!isAbilityPending || !isCurrentTurnMine) {
+        return;
+    }
+    if (!isUseAbilitySelected && !isAbilityChoicePending) {
+        setIsAbilityChoicePending(true);
+    }
+}, [isAbilityPending, isCurrentTurnMine, isUseAbilitySelected, isAbilityChoicePending]);
 
 // #28: handle own card click during ability phase
 const handleAbilityOwnCardClick = (cardIndex: number) => {
@@ -1711,6 +1847,7 @@ const handleAbilityOwnCardClick = (cardIndex: number) => {
             },
             token
         ).then(() => {
+            setIsAbilityRevealWindow(true);
             clearAbilityPeekHideTimer();
             setPeekVisibleCards(() => {
                 const next = createHiddenPeekCards();
@@ -1747,6 +1884,7 @@ const handleAbilityOpponentCardClick = (opponentId: number, cardIndex: number) =
             },
             token
         ).then(() => {
+            setIsAbilityRevealWindow(true);
             resetAbilitySelection();
         }).catch(console.error)
         .finally(() => setIsSubmittingAbility(false));
@@ -1794,12 +1932,14 @@ const refreshOwnHand = async (activeGameId: string, authToken: string) => {
     setMyHand(hand);
 };
 
-const refreshDiscardPileTop = async (activeGameId: string) => {
+const refreshDiscardPileTop = async (activeGameId: string, authToken: string) => {
     try {
-        const topCard = await apiService.get<Card | null>(
-            `/games/${activeGameId}/discard-pile/top`
+        const topCard = await apiService.getWithAuth<Card | null>(
+            `/games/${activeGameId}/discard-pile/top`,
+            authToken
         );
         setDiscardTopCard(topCard ?? null);
+        discardTopCardRef.current = topCard ?? null;
         // Use authoritative server state on explicit refreshes.
         clearDiscardTopOverrideTimer();
         setDiscardTopAnimationOverride(null);
@@ -1815,10 +1955,6 @@ useEffect(() => {
     }
 
     const resyncOnFocus = async () => {
-        if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-            return;
-        }
-
         lastActivityMsRef.current = Date.now();
         clearDiscardTopOverrideTimer();
         setDiscardTopAnimationOverride(null);
@@ -1826,7 +1962,7 @@ useEffect(() => {
         // Keep local view aligned after tab/background throttling without waiting for a manual click.
         await Promise.allSettled([
             refreshOwnHand(gameId, authToken),
-            refreshDiscardPileTop(gameId),
+            refreshDiscardPileTop(gameId, authToken),
             apiService
                 .getWithAuth<unknown>(`/games/${gameId}/drawn-card`, authToken)
                 .then((rawCard) => {
@@ -1847,6 +1983,7 @@ useEffect(() => {
                 headers: { Authorization: authToken },
             }),
         ]);
+        lastAuthoritativeResyncMsRef.current = Date.now();
     };
 
     const handleVisibilityChange = () => {
@@ -1865,26 +2002,167 @@ useEffect(() => {
 }, [apiService, gameId, token]);
 
 useEffect(() => {
-    if (!gameId) {
+    if (!gameId || selfUserId == null) {
         return;
     }
 
-    const resyncDiscardPileTop = () => {
-        if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-            return;
+    let active = true;
+    consecutiveNotMyTurnPollsRef.current = 0;
+    const syncTurnOwnership = async () => {
+        try {
+            const isMyTurnServer = await apiService.get<boolean>(
+                `/games/${encodeURIComponent(gameId)}/is-my-turn/${selfUserId}`
+            );
+            if (!active) {
+                return;
+            }
+
+            setCurrentTurnUserId((previous) => {
+                if (isMyTurnServer) {
+                    consecutiveNotMyTurnPollsRef.current = 0;
+                    currentTurnUserIdRef.current = selfUserId;
+                    return previous === selfUserId ? previous : selfUserId;
+                }
+
+                // Do not immediately demote during an active ability interaction.
+                // Some backends briefly report false while still expecting the ability click target.
+                if (
+                    previous === selfUserId &&
+                    isAbilityPending &&
+                    (isUseAbilitySelected || isAbilityChoicePending)
+                ) {
+                    consecutiveNotMyTurnPollsRef.current = 0;
+                    return previous;
+                }
+
+                if (previous === selfUserId) {
+                    const nextNotMyTurnStreak = consecutiveNotMyTurnPollsRef.current + 1;
+                    consecutiveNotMyTurnPollsRef.current = nextNotMyTurnStreak;
+                    if (nextNotMyTurnStreak < 2) {
+                        return previous;
+                    }
+                    currentTurnUserIdRef.current = null;
+                    return null;
+                }
+                consecutiveNotMyTurnPollsRef.current = 0;
+                return previous;
+            });
+        } catch {
+            // Keep websocket state as-is when poll fails transiently
         }
-        void refreshDiscardPileTop(gameId);
     };
 
-    const intervalId = window.setInterval(resyncDiscardPileTop, 6000);
-    window.addEventListener("focus", resyncDiscardPileTop, { passive: true });
-    document.addEventListener("visibilitychange", resyncDiscardPileTop);
+    const runFocusRecoveryBurst = () => {
+        void syncTurnOwnership();
+        let attempts = 0;
+        const burstId = window.setInterval(() => {
+            attempts += 1;
+            void syncTurnOwnership();
+            if (attempts >= 4) {
+                window.clearInterval(burstId);
+            }
+        }, 450);
+        return burstId;
+    };
+
+    const handleFocus = () => {
+        void syncTurnOwnership();
+    };
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === "visible") {
+            runFocusRecoveryBurst();
+        }
+    };
+
+    void syncTurnOwnership();
+    window.addEventListener("focus", handleFocus, { passive: true });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    const intervalId = window.setInterval(
+        syncTurnOwnership,
+        socketSynced ? 2500 : 1000
+    );
+
+    return () => {
+        active = false;
+        window.removeEventListener("focus", handleFocus);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        window.clearInterval(intervalId);
+    };
+}, [
+    apiService,
+    gameId,
+    selfUserId,
+    socketSynced,
+    isAbilityPending,
+    isUseAbilitySelected,
+    isAbilityChoicePending,
+]);
+
+useEffect(() => {
+    const authToken = token.trim();
+    if (!gameId || !authToken) {
+        return;
+    }
+
+    const resyncDiscardPileTop = async () => {
+        const now = Date.now();
+        const shouldRunFullResync =
+            !socketSynced ||
+            now - lastGameStateSignalMsRef.current > 8000 ||
+            now - lastAuthoritativeResyncMsRef.current > 12000;
+
+        await refreshDiscardPileTop(gameId, authToken);
+
+        // When websocket is desynced, also refresh hand and drawn-card state so
+        // board state converges without waiting for manual focus/click recovery.
+        if (shouldRunFullResync) {
+            await Promise.allSettled([
+                refreshOwnHand(gameId, authToken),
+                apiService
+                    .getWithAuth<unknown>(`/games/${gameId}/drawn-card`, authToken)
+                    .then((rawCard) => {
+                        const nextDrawnCard = toValidCardOrNull(rawCard);
+                        setDrawnCard(nextDrawnCard);
+                        drawnCardPresentRef.current = nextDrawnCard != null;
+                        if (!nextDrawnCard) {
+                            setSelectedDrawSource(null);
+                            setHasChosenDrawSourceThisTurn(false);
+                        }
+                    })
+                    .catch(() => {
+                        setDrawnCard(null);
+                        drawnCardPresentRef.current = false;
+                        setSelectedDrawSource(null);
+                        setHasChosenDrawSourceThisTurn(false);
+                    }),
+            ]);
+            lastAuthoritativeResyncMsRef.current = Date.now();
+        }
+    };
+
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === "visible") {
+            void resyncDiscardPileTop();
+        }
+    };
+    const handlePageShow = () => {
+        void resyncDiscardPileTop();
+    };
+
+    void resyncDiscardPileTop();
+    const intervalId = window.setInterval(resyncDiscardPileTop, socketSynced ? 4000 : 1800);
+    window.addEventListener("pointerdown", handlePageShow, { passive: true });
+    window.addEventListener("focus", handlePageShow, { passive: true });
+    window.addEventListener("pageshow", handlePageShow, { passive: true });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
         window.clearInterval(intervalId);
-        window.removeEventListener("focus", resyncDiscardPileTop);
-        document.removeEventListener("visibilitychange", resyncDiscardPileTop);
+        window.removeEventListener("pointerdown", handlePageShow);
+        window.removeEventListener("focus", handlePageShow);
+        window.removeEventListener("pageshow", handlePageShow);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-}, [gameId]);
+}, [apiService, gameId, token, socketSynced]);
 
 const clearFlyingCardTimer = () => {
     if (flyingCardTimeoutsRef.current.length === 0) {
@@ -1994,7 +2272,7 @@ const swapDrawnCardWithHand = (targetCardIndex: number) => {
         setHasChosenDrawSourceThisTurn(false);
         await Promise.all([
             refreshOwnHand(gameId, token),
-            refreshDiscardPileTop(gameId),
+            refreshDiscardPileTop(gameId, token),
         ]);
     }).catch((error) => {
         console.error("Failed to swap drawn card:", error);
@@ -2003,29 +2281,13 @@ const swapDrawnCardWithHand = (targetCardIndex: number) => {
     });
 };
 
-// temp implementation until backend is properly implemented (endpoint missing)
+// Discard the currently drawn card
 const tryDiscardDrawnCard = async (activeGameId: string, authToken: string) => {
-    const endpoints = [
+    await apiService.postWithAuth(
         `/games/${activeGameId}/drawn-card/discard`,
-        `/games/${activeGameId}/moves/discard`,
-    ];
-
-    let unsupportedError: unknown = null;
-    for (const endpoint of endpoints) {
-        try {
-            await apiService.postWithAuth(endpoint, {}, authToken);
-            return;
-        } catch (error) {
-            const status = (error as Partial<ApplicationError>)?.status;
-            if (status === 404 || status === 405) {
-                unsupportedError = error;
-                continue;
-            }
-            throw error;
-        }
-    }
-
-    throw unsupportedError ?? new Error("No supported endpoint for discarding drawn card.");
+        {},
+        authToken,
+    );
 };
 
 const discardDrawnCard = () => {
@@ -2048,7 +2310,7 @@ const discardDrawnCard = () => {
         setDrawnCard(null);
         setSelectedDrawSource(null);
         setHasChosenDrawSourceThisTurn(false);
-        await refreshDiscardPileTop(gameId);
+        await refreshDiscardPileTop(gameId, token);
     }).catch((error) => {
         console.error("Failed to discard drawn card:", error);
     }).finally(() => {
@@ -2090,7 +2352,7 @@ const swapDiscardPileTopWithHand = (targetCardIndex: number) => {
         triggerDiscardFlipReveal();
         await Promise.all([
             refreshOwnHand(gameId, token),
-            refreshDiscardPileTop(gameId),
+            refreshDiscardPileTop(gameId, token),
         ]);
     }).catch((error) => {
         console.error("Failed to swap discard pile top card:", error);
@@ -2153,7 +2415,7 @@ const drawFromDiscardPile = () => {
                 `/games/${gameId}/drawn-card`,
                 token
             ),
-            refreshDiscardPileTop(gameId),
+            refreshDiscardPileTop(gameId, token),
             refreshOwnHand(gameId, token),
         ]);
         const nextDrawnCard = toValidCardOrNull(rawDrawnCard);
@@ -2292,50 +2554,35 @@ const handleDiscardPileDrop = (event: React.DragEvent<HTMLDivElement>) => {
     discardDrawnCard();
 };
 
-// temp until Abilities implemented
+// End an active ability phase without using it.
 const trySkipAbility = async (activeGameId: string, authToken: string) => {
-    const endpoints = [
-        `/games/${activeGameId}/abilities/skip`,
-        `/games/${activeGameId}/ability/skip`,
-        `/games/${activeGameId}/moves/skip-ability`,
-        `/games/${activeGameId}/moves/ability/skip`,
-    ];
-
     const delay = (milliseconds: number) =>
         new Promise<void>((resolve) => {
             setTimeout(resolve, milliseconds);
         });
 
     const maxAttempts = 4;
-    let unsupportedError: unknown = null;
-
-    for (const endpoint of endpoints) {
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-            try {
-                await apiService.postWithAuth(endpoint, {}, authToken);
-                return;
-            } catch (error) {
-                const status = (error as Partial<ApplicationError>)?.status;
-                if (status === 404 || status === 405) {
-                    unsupportedError = error;
-                    break;
-                }
-                if ((status === 400 || status === 409 || status === 423) && attempt < maxAttempts - 1) {
-                    await delay(200);
-                    continue;
-                }
-                throw error;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+            await apiService.postWithAuth(`/games/${activeGameId}/abilities/skip`, {}, authToken);
+            return;
+        } catch (error) {
+            const status = (error as Partial<ApplicationError>)?.status;
+            if ((status === 400 || status === 409 || status === 423) && attempt < maxAttempts - 1) {
+                await delay(200);
+                continue;
             }
+            throw error;
         }
     }
-
-    throw unsupportedError ?? new Error("No supported endpoint for skipping ability.");
 };
 
 const chooseUseAbility = () => {
     if (!canShowAbilityChoiceButtons) {
         return;
     }
+    // Prevent a stale negative turn poll from immediately locking targets
+    consecutiveNotMyTurnPollsRef.current = 0;
     setIsUseAbilitySelected(true);
     setIsAbilityChoicePending(false);
 };
@@ -2365,7 +2612,7 @@ const canCallCabo =
     !isSwappingDrawnCard &&
     !isDiscardingDrawnCard &&
     !isCallingCabo &&
-    !isAwaitingRematchDecision;
+    !isPostRoundPhase;
 
 const callCabo = () => {
     if (!canCallCabo || !gameId || !token || isCaboCalledGlobal) {
@@ -2442,14 +2689,23 @@ const centerTurnActionLabel = useMemo(() => {
         return "";
     }
 
-    const suffix = `(${turnTimeLeft}s)`;
+    const suffix = `(${displayedTurnTimeLeft}s)`;
     if (isDrawingFromPile || isDrawingFromDiscardPile) {
         return `Preparing action ${suffix}`;
     }
 
     if (isAbilityPending) {
         if (isAbilityChoicePending) {
-            return `${abilityPhaseLabel}: ${abilityPhaseLabel} or End Turn ${suffix}`;
+            if (gameStatus === "ability_peek_self") {
+                return `Peek ability: PEEK or End Turn ${suffix}`;
+            }
+            if (gameStatus === "ability_peek_opponent") {
+                return `Spy ability: SPY or End Turn ${suffix}`;
+            }
+            if (gameStatus === "ability_swap") {
+                return `Swap ability: SWAP or End Turn ${suffix}`;
+            }
+            return `Ability: USE or End Turn ${suffix}`;
         }
         if (gameStatus === "ability_peek_self") {
             return `Peek ability: Choose 1 of your own cards! ${suffix}`;
@@ -2476,7 +2732,7 @@ const centerTurnActionLabel = useMemo(() => {
     return `Draw from Draw Pile or Discard Pile ${suffix}`;
 }, [
     showCenterTurnCountdown,
-    turnTimeLeft,
+    displayedTurnTimeLeft,
     isDrawingFromPile,
     isDrawingFromDiscardPile,
     isAbilityPending,
@@ -2513,11 +2769,26 @@ const playerListRows = tablePlayerIds.map((id) => {
                           >
                               <span>{player.label}</span>
                               {player.isActive && showTurnCountdown && (
-                                  <span className="game-player-list-timer">{turnTimeLeft}s</span>
+                                  <span className="game-player-list-timer">{displayedTurnTimeLeft}s</span>
                               )}
                           </div>
                       ))}
                   </div>
+
+                  {isCaboRevealPhase && (
+                      <div className="game-rematch-overlay game-rematch-overlay-cabo-reveal" role="status" aria-live="polite">
+                          <div className="game-rematch-card game-rematch-card-cabo-reveal">
+                              <h2 className="game-rematch-title">Round Finished</h2>
+                              <p className="game-rematch-text">
+                                  Revealing all cards for{" "}
+                                  <span className="game-rematch-countdown">{displayedCaboRevealCountdown}s</span>
+                              </p>
+                              <p className="game-rematch-subtext">
+                                  Rematch voting opens right after this reveal window.
+                              </p>
+                          </div>
+                      </div>
+                  )}
 
                   {isAwaitingRematchDecision && (
                       <div className="game-rematch-overlay" role="dialog" aria-modal="true" aria-live="polite">
@@ -2525,7 +2796,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                               <h2 className="game-rematch-title">Round Finished</h2>
                               <p className="game-rematch-text">
                                   Rematch decision closes in{" "}
-                                  <span className="game-rematch-countdown">{rematchCountdown}s</span>
+                                  <span className="game-rematch-countdown">{displayedRematchCountdown}s</span>
                               </p>
                               <p className="game-rematch-subtext">
                                   Continue keeps the same lobby code. Fresh creates a new lobby code.
@@ -2588,7 +2859,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                               <h2 className="game-rematch-title">AFK Warning</h2>
                               <p className="game-rematch-text">
                                   Inactivity timeout in{" "}
-                                  <span className="game-rematch-countdown">{afkRemainingSeconds}s</span>
+                                  <span className="game-rematch-countdown">{displayedAfkRemainingSeconds}s</span>
                               </p>
                               <p className="game-rematch-subtext">
                                   Move your mouse, press a key, or return focus to avoid auto timeout.
@@ -2629,7 +2900,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           className="game-opponent-card-anchor"
                                       >
                                           <CardComponent
-                                              hidden={card.faceDown}
+                                              hidden={isPostRoundPhase ? false : card.faceDown}
                                               value={card.value}
                                               size="small"
                                               // #28: highlight opponent cards during ability phase
@@ -2684,7 +2955,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           className="game-opponent-card-anchor"
                                       >
                                           <CardComponent
-                                              hidden={card.faceDown}
+                                              hidden={isPostRoundPhase ? false : card.faceDown}
                                               value={card.value}
                                               size="small"
                                               // #28: highlight opponent cards during ability phase
@@ -2739,7 +3010,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                           className="game-opponent-card-anchor"
                                       >
                                           <CardComponent
-                                              hidden={card.faceDown}
+                                              hidden={isPostRoundPhase ? false : card.faceDown}
                                               value={card.value}
                                               size="small"
                                               // #28: highlight opponent cards during ability phase
@@ -2786,6 +3057,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                               <CardComponent
                                   hidden={!showDrawPileAsRevealedCard}
                                   value={showDrawPileAsRevealedCard ? drawnCard?.value : undefined}
+                                  abilityLabel={drawPileAbilityLabel}
                                   size="medium"
                                   onClick={drawFromPile}
                                   draggable={isDrawPileSelectedForTurnAction && canDragSelectedTurnCard}
@@ -2845,7 +3117,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                               <div
                                   className="game-turn-progress-fill"
                                   style={{
-                                      width: `${Math.max(0, Math.min(100, (turnTimeLeft / turnDurationSeconds) * 100))}%`,
+                                      width: `${Math.max(0, Math.min(100, (turnTimeLeft / activeTurnWindowSeconds) * 100))}%`,
                                   }}
                               />
                           </div>
@@ -2960,7 +3232,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                   className="game-own-card-anchor"
                               >
                                   <CardComponent
-                                    hidden={!peekVisibleCards[i]}  // #16 selected cards are face-up locally
+                                    hidden={isPostRoundPhase ? false : !peekVisibleCards[i]}  // #16 selected cards are face-up locally
                                     value={card?.value}
                                     size="large"
                                     onClick={() => {

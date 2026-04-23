@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 interface CardProps {
   hidden: boolean;        // true = card back, false = show value
   value?: number;         // shown when hidden=false
+  abilityLabel?: string;
   size?: "small" | "medium" | "large";
   onClick?: () => void;
   disabled?: boolean;
@@ -26,6 +27,7 @@ const FLIP_ANIMATION_MS = 280;
 const CardComponent: React.FC<CardProps> = ({
   hidden,
   value,
+  abilityLabel,
   size = "medium",
   onClick,
   disabled = false,
@@ -145,7 +147,13 @@ const CardComponent: React.FC<CardProps> = ({
             ...style,
             ...(mergedAnimation ? { animation: mergedAnimation } : {}),
           }}
+          title={abilityLabel}
         >
+          {abilityLabel && (
+            <span className="card-ability-label">
+              {abilityLabel}
+            </span>
+          )}
           {/* if no picture yet show value with white backgorund */}
           {!imagePath && (
             <span style={{
