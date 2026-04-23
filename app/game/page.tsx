@@ -2611,6 +2611,35 @@ const playerListRows = tablePlayerIds.map((id) => {
                         duration={initialPeekDurationSeconds}
                       />
                   )}
+                  {/* #32A banner or visual cue that stays on screen for everyone once Cabo is called (e.g., "Final Round!") */}
+                  {isCaboCalledGlobal && (
+                      <div style={{
+                          position: "fixed",
+                          top: "16px",
+                          left: "50%",
+                          transform: "translateX(-50%)",
+                          zIndex: 999,
+                          backgroundColor: isCaboForcedByTimeoutGlobal
+                            ? "rgba(150, 50, 50, 0.92)"
+                            : "rgba(200, 80, 50, 0.92)",
+                          color: "white",
+                          padding: "10px 28px",
+                          borderRadius: "12px",
+                          fontWeight: "bold",
+                          fontSize: "18px",
+                          textAlign: "center",
+                          boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+                          backdropFilter: "blur(6px)",
+                          border: "2px solid rgba(255,255,255,0.25)",
+                          pointerEvents: "none",
+                          animation: "pulse 1.5s ease-in-out infinite",
+                      }}>
+                          {isCaboForcedByTimeoutGlobal
+                            ? "Cabo called! Final Round!"
+                            : "Cabo Called! Final Round!"}
+                      </div>
+                  )}
+
 
                   {/* TOP CENTER */}
                   {seatAssignments.topOpponentId != null && (
