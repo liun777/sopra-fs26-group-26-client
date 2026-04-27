@@ -12,6 +12,8 @@ import { Client } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 import type { User } from "@/types/user";
 import { useRouter } from "next/navigation";
+import Scores from "./components/Scores";
+import FinalScoreScreen from "./components/FinalScoreScreen";
 
 interface Card {
     value: number;
@@ -1458,7 +1460,20 @@ const Game = () => {
               window.clearInterval(intervalId);
           };
       }, [isCaboRevealPhase, caboRevealDurationSeconds]);
+      // #34: Show final screen when cabo_reveal starts
+      useEffect(() => {
+          if (!isCaboRevealPhase) return;
 
+          // TODO: Backend needs to send final scores in game state
+          // For now build placeholder from known players
+          const placeholderFinal = tablePlayerIds.map(id => ({
+              userId: id,
+              username: playerNamesById[id] ?? `Player ${id}`,
+              totalScore: 0, // TODO: real score from backend
+          }));
+          setFinalScores(placeholderFinal);
+          setShowFinalScreen(true);
+      }, [isCaboRevealPhase]);
       useEffect(() => {
           if (!isAwaitingRematchDecision || !gameId || !token) {
               setRematchCountdown(0);
@@ -2639,6 +2654,44 @@ const callCabo = () => {
     });
 };
 
+// #36/#42: Scores
+const [isScoresOpen, setIsScoresOpen] = useState<boolean>(false);
+const [gameScores, setGameScores] = useState<Array<{
+    userId: number;
+    username: string;
+    totalScore: number;
+    roundScore?: number;
+}>>([]);
+// #34: Final Score Screen
+const [showFinalScreen, setShowFinalScreen] = useState<boolean>(false);
+const [finalScores, setFinalScores] = useState<Array<{
+    userId: number;
+    username: string;
+    totalScore: number;
+    isSpecialWin?: boolean;
+}>>([]);
+
+// #36/#42: fetch and show scores
+const handleShowScores = async () => {
+    if (!gameId || !token) return;
+    try {
+        // TODO: Backend needs GET /games/{gameId}/scores endpoint
+        // const scores = await apiService.getWithAuth(`/games/${gameId}/scores`, token);
+        // setGameScores(scores);
+
+        // For now show placeholder with player names from playerNamesById
+        const placeholderScores = tablePlayerIds.map(id => ({
+            userId: id,
+            username: playerNamesById[id] ?? `Player ${id}`,
+            totalScore: 0, // TODO: real score from backend
+        }));
+        setGameScores(placeholderScores);
+    } catch (error) {
+        console.error("Failed to fetch scores:", error);
+    }
+    setIsScoresModalOpen(true);
+};
+
 const submitRematchChoice = (decision: "CONTINUE" | "FRESH" | "NONE") => {
     if (!isAwaitingRematchDecision || !gameId || !token || isSubmittingRematchDecision || myRematchDecision !== null) {
         return;
@@ -2882,11 +2935,26 @@ const playerListRows = tablePlayerIds.map((id) => {
                         duration={initialPeekDurationSeconds}
                       />
                   )}
+                  {/* #36/#42: Scores*/}
+                  <Scores
+                    isOpen={isScoresOpen}
+                    onClose={() => setIsScoresOpen(false)}
+                    scores={gameScores}
+                    selfUserId={selfUserId}
+                  />
+                  {/* #34: Final Score Screen */}
+                  <FinalScoreScreen
+                      isOpen={showFinalScreen}
+                      players={finalScores}
+                      selfUserId={selfUserId}
+                      onContinue={() => setShowFinalScreen(false)}
+                  />
                   {/* #32A banner or visual cue that stays on screen for everyone once Cabo is called (e.g., "Final Round!") */}
-                  {isCaboCalledGlobal && gameStatus !== "round_ended" && gameStatus !== "round_awaiting_rematch" && (
+                  {isCaboCalledGlobal && gameStatus !== "round_ended" && gameStatus !== "round_awaiting_rematch" &&  gameStatus !== "cabo_reveal" &&(
                       <div style={{
                           position: "fixed",
-                          bottom: "120px",
+                          bottom: "auto",
+                          top: "25%",
                           left: "50%",
                           transform: "translateX(-50%)",
                           zIndex: 500,
@@ -2951,8 +3019,9 @@ const playerListRows = tablePlayerIds.map((id) => {
                                                   ) ? {
                                                       outline: "3px solid #c4827a",
                                                       outlineOffset: "2px",
-                                                  } : undefined
-                                              }
+                                                  } : {
+                                                  transform: "rotate(180deg)",
+                                              }}
                                           />
                                       </div>
                                   );
@@ -3179,7 +3248,7 @@ const playerListRows = tablePlayerIds.map((id) => {
 
                   {/* Buttons are only active if it is users turn */}
                   <div className="top-right-buttons">
-                      <Button disabled={!isMyTurnUi}>Scores</Button>
+                      <Button onClick={() => void handleShowScores()}>Scores</Button>
                       <Button
                           type="primary"
                           className={isCaboCalledGlobal ? "game-cabo-called-btn" : ""}
