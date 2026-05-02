@@ -365,6 +365,10 @@ function WaitingLobbyContent() {
   const [lobbyWsConnected, setLobbyWsConnected] = useState(false);
   const [userIsHost, setUserIsHost] = useState(false);
   const [isPublicLobby, setIsPublicLobby] = useState(false);
+  // Add a checkbox/toggle in the "Join Session" or "Lobby" screen for the "Publicly Visible Moves" flag.
+  // #46
+  const [publiclyVisibleMoves, setPubliclyVisibleMoves] = useState<boolean>(false);
+
   const [inviteLoadingById, setInviteLoadingById] = useState<
     Record<string, boolean>
   >({});
@@ -986,6 +990,26 @@ function WaitingLobbyContent() {
       });
   };
 
+// Add a checkbox/toggle in the "Join Session" or "Lobby" screen for the "Publicly Visible Moves" flag.
+// #46
+  const handleMovesVisibilityToggle = (makePublic: boolean) => {
+      if (!userIsHost) return;
+      const authToken = token.trim();
+      if (!authToken || !sessionId) return;
+
+      const previous = publiclyVisibleMoves;
+      setPubliclyVisibleMoves(makePublic);
+
+      // TODO: backend needs PATCH /lobbies/{sessionId}/settings with { publiclyVisibleMoves: boolean }
+      void api.patchWithAuth(
+          `/lobbies/${encodeURIComponent(sessionId)}/settings`,
+          { publiclyVisibleMoves: makePublic },
+          authToken,
+      ).catch(() => {
+          setPubliclyVisibleMoves(previous);
+      });
+  };
+
   const handleViewerReadyToggle = () => {
     if (!viewerReadyKey) {
       return;
@@ -1373,6 +1397,18 @@ function WaitingLobbyContent() {
                         unCheckedChildren="No"
                       />
                     </div>
+                  </div>
+                  {/* #46: Add a checkbox/toggle in the "Join Session" or "Lobby" screen for the "Publicly Visible Moves" flag. */}
+                  <div className="lobby-setting-row lobby-setting-row-toggle">
+                      <span className="lobby-setting-row-label">Publicly Visible Moves</span>
+                      <div className="lobby-setting-row-control lobby-setting-row-control-toggle">
+                          <Switch
+                              checked={publiclyVisibleMoves}
+                              onChange={handleMovesVisibilityToggle}
+                              checkedChildren="Yes"
+                              unCheckedChildren="No"
+                          />
+                      </div>
                   </div>
                   <div className="lobby-setting-row">
                     <span className="lobby-setting-row-label">Game AFK/DC Timeout (sec)</span>
