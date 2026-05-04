@@ -9,7 +9,6 @@ import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { getStompBrokerUrl } from "@/utils/domain";
 import { User } from "@/types/user";
-import { Button, Card } from "antd";
 import { Client } from "@stomp/stompjs";
 import { Button, Card, Input } from "antd"; // #43 Sesssion ID lookup
 
