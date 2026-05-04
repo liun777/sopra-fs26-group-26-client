@@ -139,6 +139,8 @@ reason).
 ---
 
 ## Contributions Week 6 - [Begin Date] to [End Date]
+| **Student**        | **Date** | **Link to Commit** | **Description**                 | **Relevance**                       |
+| ------------------ | -------- | ------------------ | ------------------------------- | ----------------------------------- |
 | **@aleexgort** | 27.04.2026   | (https://github.com/liun777/sopra-fs26-group-26-client/commit/43d4e68157f4aaf91a0df55c72c23cac55c56aab)| Frontend: added animation with cabo guy for when you get the notification that youre invited by another player, added two new pages for the Scoreboard over all and one for after the final round as well as some first functionalities for these pages. #36, #34, #42, #41 | Enhances the user experience and provides critical new pages for the scoring system for S11 and S10 |
 
 ## Contributions Week 7 - [Begin Date] to [End Date]
