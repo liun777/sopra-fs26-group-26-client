@@ -362,9 +362,17 @@ function WaitingLobbyContent() {
   const [view, setView] = useState<WaitingView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  //Add a section in the Lobby view to display the names of users currently spectating.
+  //  #49
+  const [spectators, setSpectators] = useState<string[]>([]);
+
   const [lobbyWsConnected, setLobbyWsConnected] = useState(false);
   const [userIsHost, setUserIsHost] = useState(false);
   const [isPublicLobby, setIsPublicLobby] = useState(false);
+  // Add a checkbox/toggle in the "Join Session" or "Lobby" screen for the "Publicly Visible Moves" flag.
+  // #46
+  const [publiclyVisibleMoves, setPubliclyVisibleMoves] = useState<boolean>(false);
+
   const [inviteLoadingById, setInviteLoadingById] = useState<
     Record<string, boolean>
   >({});
@@ -600,6 +608,15 @@ function WaitingLobbyContent() {
         authToken,
       );
       setView(waitingView);
+      // Add a section in the Lobby view to display the names of users currently spectating.
+      // #49
+      // # 116: TODO: Backend needs to include spectators in WaitingView response
+      const rawSpectators = (waitingView as Record<string, unknown>)?.spectators;
+      if (Array.isArray(rawSpectators)) {
+          setSpectators(rawSpectators.map(s => String((s as Record<string, unknown>)?.username ?? s)));
+      } else {
+          setSpectators([]);
+      }
       setIsPublicLobby(waitingView?.isPublic !== false);
       setUserIsHost(waitingView?.viewerIsHost === true);
       setLobbyTimerSettings((previous) => {
@@ -986,6 +1003,26 @@ function WaitingLobbyContent() {
       });
   };
 
+// Add a checkbox/toggle in the "Join Session" or "Lobby" screen for the "Publicly Visible Moves" flag.
+// #46
+  const handleMovesVisibilityToggle = (makePublic: boolean) => {
+      if (!userIsHost) return;
+      const authToken = token.trim();
+      if (!authToken || !sessionId) return;
+
+      const previous = publiclyVisibleMoves;
+      setPubliclyVisibleMoves(makePublic);
+
+      // TODO: backend needs PATCH /lobbies/{sessionId}/settings with { publiclyVisibleMoves: boolean }
+      void api.patchWithAuth(
+          `/lobbies/${encodeURIComponent(sessionId)}/settings`,
+          { publiclyVisibleMoves: makePublic },
+          authToken,
+      ).catch(() => {
+          setPubliclyVisibleMoves(previous);
+      });
+  };
+
   const handleViewerReadyToggle = () => {
     if (!viewerReadyKey) {
       return;
@@ -1273,7 +1310,34 @@ function WaitingLobbyContent() {
               )}
             />
           </Card>
-          
+          {/* Add a section in the Lobby view to display the names of users currently spectating.#49 */}
+          {spectators.length > 0 && (
+              <Card
+                  title={
+                      <div className="lobby-section-title-row">
+                          <span className="lobby-section-title">👁️ Spectators</span>
+                          <span className="lobby-section-meta">{spectators.length}</span>
+                      </div>
+                  }
+                  className="dashboard-container"
+              >
+                  <List
+                      className="lobby-players-list"
+                      dataSource={spectators}
+                      rowKey={(name) => name}
+                      renderItem={(name) => (
+                          <List.Item className="lobby-slot-row lobby-slot-highlight-row">
+                              <div className="lobby-slot-label">
+                                  <span>{name}</span>
+                              </div>
+                              <span className="lobby-slot-status-pill lobby-slot-status-open">
+                                  Spectating
+                              </span>
+                          </List.Item>
+                      )}
+                  />
+              </Card>
+          )}
           {userIsHost ? ( // host vs other players see diff things
             <Card
               title={
@@ -1373,6 +1437,18 @@ function WaitingLobbyContent() {
                         unCheckedChildren="No"
                       />
                     </div>
+                  </div>
+                  {/* #46: Add a checkbox/toggle in the "Join Session" or "Lobby" screen for the "Publicly Visible Moves" flag. */}
+                  <div className="lobby-setting-row lobby-setting-row-toggle">
+                      <span className="lobby-setting-row-label">Publicly Visible Moves</span>
+                      <div className="lobby-setting-row-control lobby-setting-row-control-toggle">
+                          <Switch
+                              checked={publiclyVisibleMoves}
+                              onChange={handleMovesVisibilityToggle}
+                              checkedChildren="Yes"
+                              unCheckedChildren="No"
+                          />
+                      </div>
                   </div>
                   <div className="lobby-setting-row">
                     <span className="lobby-setting-row-label">Game AFK/DC Timeout (sec)</span>

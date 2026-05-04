@@ -9,8 +9,8 @@ import { useApi } from "@/hooks/useApi";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import { getStompBrokerUrl } from "@/utils/domain";
 import { User } from "@/types/user";
-import { Button, Card } from "antd";
 import { Client } from "@stomp/stompjs";
+import { Button, Card, Input } from "antd"; // #43 Sesssion ID lookup
 
 // Simple 3 variant dynamic greetings on Dashboard
 type GreetingSlot = "morning" | "day" | "afternoon" | "evening" | "night";
@@ -63,6 +63,9 @@ function DashboardContent() {
 
   const [user, setUser] = useState<User | null>(null);
   const [liveConnected, setLiveConnected] = useState(false);
+// Add an input field on the dashboard to allow users to look up a past sessionId and view its log.
+// #43
+  const [historySessionId, setHistorySessionId] = useState<string>("");
 
   const { value: userId, clear: clearUserId } = useLocalStorage<string>("userId", "");
   const { value: token, clear: clearToken } = useLocalStorage<string>("token", "");
@@ -233,6 +236,31 @@ function DashboardContent() {
             </div>
           </Card>
 
+          {/* #43: Add an input field on the dashboard to allow users to look up a past sessionId and view its log. */}
+          <Card
+              className="dashboard-container"
+              title={<div className="dashboard-section-title">Move History</div>}
+          >
+              <div className="dashboard-button-stack">
+                  <Input
+                      placeholder="Enter Session ID to look up moves"
+                      value={historySessionId}
+                      onChange={(e) => setHistorySessionId(e.target.value)}
+                      style={{ marginBottom: "10px" }}
+                  />
+                  <Button
+                      type="primary"
+                      disabled={!historySessionId.trim()}
+                      onClick={() => {
+                          if (historySessionId.trim()) {
+                              router.push(`/history/${encodeURIComponent(historySessionId.trim())}`);
+                          }
+                      }}
+                  >
+                      View Move History
+                  </Button>
+              </div>
+          </Card>
           <Card
             className="dashboard-container"
             title={<div className="dashboard-section-title">Play</div>}

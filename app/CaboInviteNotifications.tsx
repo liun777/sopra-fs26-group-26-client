@@ -42,6 +42,7 @@ export default function CaboInviteNotifications() {
   const { value: userId } = useLocalStorage<string>("userId", "");
   const [pending, setPending] = useState<CaboInvitePending[]>([]);
   const [responding, setResponding] = useState(false);
+
   const isAuthRoute =
     pathname === "/" || pathname === "/login" || pathname === "/register";
 
@@ -106,7 +107,15 @@ export default function CaboInviteNotifications() {
   }, [token, userId, loadPending, isAuthRoute]);
 
   const current = pending[0];
-
+// Caboguy animation
+  const [caboGuyFrame, setCaboGuyFrame] = useState(1);
+  useEffect(() => {
+      if (!current) return;
+      const interval = setInterval(() => {
+          setCaboGuyFrame(prev => prev >= 3 ? 1 : prev + 1);
+      }, 400);
+      return () => clearInterval(interval);
+  }, [current]);
   const confirmLobbySwitchIfNeeded = useCallback(async (): Promise<boolean> => {
     const t = token.trim();
     const uid = String(userId).trim();
@@ -170,25 +179,45 @@ export default function CaboInviteNotifications() {
 
   if (isAuthRoute || !current) return null;
 
-  return (
+return (
     <div className="cabo-invite-corner" role="status" aria-live="polite">
-      <p className="cabo-invite-corner-text">
-        Player {current.fromUsername} has invited you to play Cabo.
-      </p>
-      <div className="cabo-invite-corner-actions">
-        <Space>
-          <Button
-            type="primary"
-            loading={responding}
-            onClick={() => void onDecision("ACCEPT")}
-          >
-            Accept
-          </Button>
-          <Button disabled={responding} onClick={() => void onDecision("DECLINE")}>
-            Decline
-          </Button>
-        </Space>
-      </div>
+        {/* Cabo Männchen Animation */}
+        <div style={{
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: "5px",
+
+        }}>
+            <img
+                src={`/caboguy${caboGuyFrame}.png`}
+                alt="Cabo Guy"
+                style={{
+                    width: "160px",
+                    height: "160px",
+                    objectFit: "contain",
+                    objectPosition: "-10% center",
+                    flexShrink: 0,
+                }}
+            />
+            <p className="cabo-invite-corner-text" style={{ margin: 0, flex: 1,wordBreak: "break-word", marginLeft: "-78px",}}>
+                <strong>{current.fromUsername}</strong> has invited you to play Cabo!
+            </p>
+        </div>
+        <div className="cabo-invite-corner-actions" style={{ marginTop: "12px" }}>
+            <Space>
+                <Button
+                    type="primary"
+                    loading={responding}
+                    onClick={() => void onDecision("ACCEPT")}
+                >
+                    Accept
+                </Button>
+                <Button disabled={responding} onClick={() => void onDecision("DECLINE")}>
+                    Decline
+                </Button>
+            </Space>
+        </div>
     </div>
-  );
+);
 }
