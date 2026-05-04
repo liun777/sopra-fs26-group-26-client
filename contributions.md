@@ -147,8 +147,7 @@ reason).
 | **Student**        | **Date** | **Link to Commit** | **Description**                 | **Relevance**                       |
 | ------------------ | -------- | ------------------ | ------------------------------- | ----------------------------------- |
 | **@aleexgort** | 02.05.2026   |(https://github.com/liun777/sopra-fs26-group-26-client/commit/332a5a68383c0e2cffedf8bbddca949f3aeca673)| #46: created publicly visible move tracking toggle for the game settings, # 43: session history lookup on the desktop that will later navigate to the move history, #44: added a new move history page  | Added new funcitonalities from the frontend side to display the players history of moves during a game, for the players to learn from mistakes.|
-| **@aleexgort** | 02.05.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/7a94c1b6c9795189ddb518906d60e6d08c551556
-|#49: added a spectators list in the lobby waiting page that shows who is watching. #50: already fully implemented by someone else.  | Add an additional feature for the game.   |
+| **@aleexgort** | 02.05.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/7a94c1b6c9795189ddb518906d60e6d08c551556 |#49: added a spectators list in the lobby waiting page that shows who is watching. #50: already fully implemented by someone else. | Add an additional feature for the game.   |
 
 
 ## Contributions Week 8 - [Begin Date] to [End Date]
