@@ -2689,7 +2689,7 @@ const handleShowScores = async () => {
     } catch (error) {
         console.error("Failed to fetch scores:", error);
     }
-    setIsScoresModalOpen(true);
+    setIsScoresOpen(true);
 };
 
 const submitRematchChoice = (decision: "CONTINUE" | "FRESH" | "NONE") => {
