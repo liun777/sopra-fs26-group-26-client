@@ -139,5 +139,19 @@ reason).
 ---
 
 ## Contributions Week 6 - [Begin Date] to [End Date]
+| **@aleexgort** | 27.04.2026   | (https://github.com/liun777/sopra-fs26-group-26-client/commit/43d4e68157f4aaf91a0df55c72c23cac55c56aab)| Frontend: added animation with cabo guy for when you get the notification that youre invited by another player, added two new pages for the Scoreboard over all and one for after the final round as well as some first functionalities for these pages. #36, #34, #42, #41 | Enhances the user experience and provides critical new pages for the scoring system for S11 and S10 |
 
+## Contributions Week 7 - [Begin Date] to [End Date]
+| **@aleexgort** | 02.05.2026   |(https://github.com/liun777/sopra-fs26-group-26-client/commit/332a5a68383c0e2cffedf8bbddca949f3aeca673)| #46: created publicly visible move tracking toggle for the game settings, # 43: session history lookup on the desktop that will later navigate to the move history, #44: added a new move history page  | Added new funcitonalities from the frontend side to display the players history of moves during a game, for the players to learn from mistakes.|
+| **@aleexgort** | 02.05.2026 | https://github.com/liun777/sopra-fs26-group-26-client/commit/7a94c1b6c9795189ddb518906d60e6d08c551556
+|#49: added a spectators list in the lobby waiting page that shows who is watching. #50: already fully implemented by someone else.  | Add an additional feature for the game.   |
+
+
+## Contributions Week 8 - [Begin Date] to [End Date]
+ **@** |xx.xx.2026  |link | .  | .|
+
+
+
+
+ 
 _Continue with the same table format as above._
