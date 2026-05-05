@@ -86,6 +86,72 @@ function toFiniteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toKeyCandidates(value: unknown): string[] {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return [];
+  }
+
+  const candidates = new Set<string>([raw]);
+  const numeric = toFiniteNumber(raw);
+  if (numeric != null) {
+    candidates.add(String(numeric));
+    candidates.add(String(Math.trunc(numeric)));
+  }
+
+  return Array.from(candidates);
+}
+
+function pickMappedNumber(record: Record<string, unknown> | null, key: string): number | null {
+  if (!record) {
+    return null;
+  }
+
+  for (const candidate of toKeyCandidates(key)) {
+    const value = toFiniteNumber(record[candidate]);
+    if (value != null) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function deriveWinnerFromScoreMap(
+  scoreMap: Record<string, unknown> | null,
+  viewedUserId: string,
+  viewedUsername: string,
+): { winnerId: string; winnerName: string } {
+  if (!scoreMap) {
+    return { winnerId: "", winnerName: "" };
+  }
+
+  const entries = Object.entries(scoreMap)
+    .map(([id, value]) => ({
+      id: String(id ?? "").trim(),
+      score: toFiniteNumber(value),
+    }))
+    .filter((entry) => entry.id.length > 0 && entry.score != null);
+
+  if (entries.length === 0) {
+    return { winnerId: "", winnerName: "" };
+  }
+
+  const bestScore = Math.min(...entries.map((entry) => entry.score as number));
+  const winners = entries.filter((entry) => entry.score === bestScore);
+  if (winners.length !== 1) {
+    return { winnerId: "", winnerName: "-" };
+  }
+
+  const winnerId = winners[0].id;
+  const winnerName =
+    winnerId === viewedUserId && viewedUsername.trim().length > 0
+      ? viewedUsername
+      : `User ${winnerId}`;
+
+  return { winnerId, winnerName };
+}
+
 function toReadableScore(value: number | null): string {
   if (value == null) {
     return "-";
@@ -190,6 +256,7 @@ function toProfileResultRows(
 
     const playedAtRaw =
       record.playedAt ??
+      record.startTime ??
       record.finishedAt ??
       record.completedAt ??
       record.endedAt ??
@@ -198,10 +265,14 @@ function toProfileResultRows(
     const playedAt = toPlayedAtDisplay(playedAtRaw);
 
     const scoreMap =
+      asRecord(record.totalScoreByUserId) ??
       asRecord(record.userScores) ??
       asRecord(record.scores) ??
       asRecord(record.playerScores);
-    const mappedScore = scoreMap ? toFiniteNumber(scoreMap[viewedUserId]) : null;
+    const mappedScore = pickMappedNumber(scoreMap, viewedUserId);
+    const roundsFromPerRound = Array.isArray(record.userScoresPerRound)
+      ? record.userScoresPerRound.length
+      : null;
     const score =
       mappedScore ??
       toFiniteNumber(record.userScore) ??
@@ -210,6 +281,7 @@ function toProfileResultRows(
       toFiniteNumber(record.finalScore);
     const statsRecord = asRecord(record.stats);
     const rounds =
+      toFiniteNumber(roundsFromPerRound) ??
       toFiniteNumber(record.rounds) ??
       toFiniteNumber(record.totalRounds) ??
       toFiniteNumber(record.roundCount) ??
@@ -218,17 +290,21 @@ function toProfileResultRows(
       toFiniteNumber(statsRecord?.totalRounds);
 
     const winnerRecord = asRecord(record.winner);
-    const winnerId = String(
+    const derivedWinner = deriveWinnerFromScoreMap(scoreMap, viewedUserId, viewedUsername);
+    const winnerIdRaw = String(
       record.winnerUserId ??
       record.winnerId ??
       winnerRecord?.id ??
+      derivedWinner.winnerId ??
       "",
     ).trim();
+    const winnerId = winnerIdRaw || derivedWinner.winnerId;
     const winnerName = String(
       record.winnerUsername ??
       record.winnerName ??
       winnerRecord?.username ??
       winnerRecord?.name ??
+      derivedWinner.winnerName ??
       (winnerId ? `User ${winnerId}` : "-"),
     ).trim() || "-";
 
@@ -395,6 +471,7 @@ const UserProfilePage: React.FC = () => {
       setLoadingResults(true);
 
       const authToken = String(token ?? "").trim();
+      const unavailableStatuses = new Set<number>([404, 405, 501]);
       const endpoint = `/users/${encodeURIComponent(viewedUserId)}/results`;
 
       try {
@@ -408,8 +485,33 @@ const UserProfilePage: React.FC = () => {
         return;
       } catch (error: unknown) {
         const status = (error as ApplicationError)?.status;
-        if (status !== 404 && status !== 405) {
+        if (!unavailableStatuses.has(status ?? -1)) {
           console.error("Could not load user game results:", error);
+          if (active) {
+            setResultsRaw([]);
+          }
+          return;
+        }
+      }
+
+      if (!authToken) {
+        if (active) {
+          setResultsRaw([]);
+        }
+        return;
+      }
+
+      const historyEndpoint = `/users/${encodeURIComponent(viewedUserId)}/history`;
+      try {
+        const historyResponse = await apiService.getWithAuth<unknown>(historyEndpoint, authToken);
+        if (active) {
+          setResultsRaw(historyResponse);
+        }
+        return;
+      } catch (error: unknown) {
+        const status = (error as ApplicationError)?.status;
+        if (status !== 403 && status !== 404 && status !== 405) {
+          console.error("Could not load user game history fallback:", error);
         }
       }
 
@@ -448,20 +550,37 @@ const UserProfilePage: React.FC = () => {
   };
 
   const creationDate = user?.creationDate ?? "-";
-  const wins = Number(user?.gamesWon ?? 0);
+  const rank = user?.overallRank ?? "-";
+  const roundsPlayedRaw = user?.roundsPlayed;
+  const roundsPlayed = Number.isFinite(Number(roundsPlayedRaw))
+    ? Number(roundsPlayedRaw)
+    : null;
+  const roundsPlayedText = roundsPlayed == null ? "-" : String(roundsPlayed);
+  const roundsWon = Number(user?.roundsWon ?? 0);
+  const roundsWonRatePct =
+    roundsPlayed != null && roundsPlayed > 0 ? (roundsWon / roundsPlayed) * 100 : null;
+  const roundsWonRateText = roundsWonRatePct == null
+    ? "-"
+    : `${roundsWon}/${roundsPlayed} (${Number(roundsWonRatePct).toFixed(1).replace(/\.0$/, "")}%)`;
+  const gamesWon = Number(user?.gamesWon ?? 0);
   const gamesPlayedRaw = (
     user as User & { gamesPlayed?: number | null; games?: number | null }
   )?.gamesPlayed ?? (
     user as User & { gamesPlayed?: number | null; games?: number | null }
-  )?.games ?? 0;
+  )?.games;
   const gamesPlayed = Number.isFinite(Number(gamesPlayedRaw))
     ? Number(gamesPlayedRaw)
-    : 0;
-  const winRatePct = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
-  const winRateText = Number(winRatePct).toFixed(1).replace(/\.0$/, "");
-  const winsGamesSummary = `${wins}/${gamesPlayed} (${winRateText}%)`;
-  const averageScore = user?.averageScorePerRound ?? "-";
-  const rank = user?.overallRank ?? "-";
+    : null;
+  const gamesWonRatePct =
+    gamesPlayed != null && gamesPlayed > 0 ? (gamesWon / gamesPlayed) * 100 : null;
+  const gamesWonRateText = gamesWonRatePct == null
+    ? "-"
+    : `${gamesWon}/${gamesPlayed} (${Number(gamesWonRatePct).toFixed(1).replace(/\.0$/, "")}%)`;
+  const averageScoreRaw = user?.averageScorePerRound;
+  const averageScore =
+    averageScoreRaw == null || !Number.isFinite(Number(averageScoreRaw))
+      ? "-"
+      : Number(averageScoreRaw).toFixed(2).replace(/\.00$/, "");
   const shownBio = (user?.bio ?? "").trim() || DEFAULT_BIO;
   const isDefaultBio = shownBio === DEFAULT_BIO;
   const profilePresenceKey = toPresenceKey(user?.status);
@@ -498,16 +617,24 @@ const UserProfilePage: React.FC = () => {
                   <span className="profile-value">{creationDate}</span>
                 </div>
                 <div className="profile-row">
-                  <span className="profile-key">Wins/Games</span>
-                  <span className="profile-value">{winsGamesSummary}</span>
+                  <span className="profile-key">Overall Rank</span>
+                  <span className="profile-value">{rank}</span>
                 </div>
                 <div className="profile-row">
-                  <span className="profile-key">Average Score per Round</span>
+                  <span className="profile-key">Rounds</span>
+                  <span className="profile-value">{roundsPlayedText}</span>
+                </div>
+                <div className="profile-row">
+                  <span className="profile-key">Avg Score</span>
                   <span className="profile-value">{averageScore}</span>
                 </div>
                 <div className="profile-row">
-                  <span className="profile-key">Overall Rank</span>
-                  <span className="profile-value">{rank}</span>
+                  <span className="profile-key">Rounds Won %</span>
+                  <span className="profile-value">{roundsWonRateText}</span>
+                </div>
+                <div className="profile-row">
+                  <span className="profile-key">Games Won %</span>
+                  <span className="profile-value">{gamesWonRateText}</span>
                 </div>
 
                 <div className="profile-bio-block">

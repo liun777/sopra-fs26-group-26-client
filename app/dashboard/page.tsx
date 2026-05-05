@@ -290,7 +290,7 @@ function DashboardContent() {
                 User Profile
               </Button>
               <Button type="primary" onClick={() => router.push("/users")}>
-                User List
+                Users & Leaderboard
               </Button>
             </div>
           </Card>

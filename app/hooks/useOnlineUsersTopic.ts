@@ -28,6 +28,12 @@ function parseOnlineUsersJson(body: string): User[] {
       bio: (o.bio as string) ?? null,
       creationDate: o.creationDate != null ? String(o.creationDate) : null,
       gamesWon: (o.gamesWon as number) ?? null,
+      roundsWon: (o.roundsWon as number) ?? null,
+      roundsPlayed: (o.roundsPlayed as number) ?? null,
+      rounds: (o.rounds as number) ?? null,
+      roundCount: (o.roundCount as number) ?? null,
+      gamesPlayed: (o.gamesPlayed as number) ?? null,
+      games: (o.games as number) ?? null,
       averageScorePerRound: (o.averageScorePerRound as number) ?? null,
       overallRank: (o.overallRank as number) ?? null,
     };

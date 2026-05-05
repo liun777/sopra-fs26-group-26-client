@@ -1,5 +1,4 @@
-//A final screen that appears when the game limit is reached, displaying the ultimate winner and final rankings.
-//#34
+//A final score screen after Cabo reveal
 
 import React from "react";
 import { Button } from "antd";
@@ -7,141 +6,385 @@ import { Button } from "antd";
 type FinalPlayer = {
     userId: number;
     username: string;
-    totalScore: number;
+    totalScore: number | null;
+    roundScores?: Array<number | null> | null;
     isSpecialWin?: boolean; // two 12s + two 13s
 };
+
+type FinalPlayerResolved = Omit<FinalPlayer, "roundScores" | "totalScore"> & {
+    totalScore: number | null;
+    roundScores: Array<number | null>;
+};
+
+type RematchDecision = "CONTINUE" | "FRESH" | "NONE";
 
 interface FinalScoreScreenProps {
     isOpen: boolean;
     players: FinalPlayer[];
     selfUserId: number | null;
-    onContinue: () => void;
+    totalRounds?: number | null;
+    rematchCountdownSeconds: number;
+    myRematchDecision: RematchDecision | null;
+    isSubmittingRematchDecision: boolean;
+    onChooseRematch: (decision: RematchDecision) => void;
     // TODO: Backend needs to send final scores in game state
+}
+
+function toFiniteNumber(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toScoreText(value: number | null): string {
+    return value == null ? "-" : String(Math.trunc(value));
+}
+
+function toOverallPlaceText(rank: number): string {
+    if (rank === 1) return "\uD83E\uDD47 1.";
+    if (rank === 2) return "\uD83E\uDD48 2.";
+    if (rank === 3) return "\uD83E\uDD49 3.";
+    if (rank === 4) return "4.";
+    return `${rank}.`;
+}
+
+function toRoundMedal(rank: number): string {
+    if (rank === 1) return "\uD83E\uDD47";
+    if (rank === 2) return "\uD83E\uDD48";
+    if (rank === 3) return "\uD83E\uDD49";
+    return "";
+}
+
+function sortPlayersByScore(players: FinalPlayerResolved[], scoreByUserId: Record<number, number | null>): FinalPlayerResolved[] {
+    return [...players].sort((a, b) => {
+        const scoreA = scoreByUserId[a.userId];
+        const scoreB = scoreByUserId[b.userId];
+        if (scoreA == null && scoreB == null) {
+            return a.username.localeCompare(b.username);
+        }
+        if (scoreA == null) {
+            return 1;
+        }
+        if (scoreB == null) {
+            return -1;
+        }
+        if (scoreA !== scoreB) {
+            return scoreA - scoreB;
+        }
+        return a.username.localeCompare(b.username);
+    });
+}
+
+function getRanksByUserId(players: FinalPlayerResolved[], scoreByUserId: Record<number, number | null>): Record<number, number> {
+    const sorted = sortPlayersByScore(players, scoreByUserId);
+    const out: Record<number, number> = {};
+    sorted.forEach((player, index) => {
+        out[player.userId] = index + 1;
+    });
+    return out;
+}
+
+function getRoundRanksByUserId(players: FinalPlayerResolved[], roundIndex: number): Record<number, number> {
+    const scored = players
+        .map((player) => ({
+            userId: player.userId,
+            username: player.username,
+            score: player.roundScores[roundIndex] ?? null,
+        }))
+        .filter((entry): entry is { userId: number; username: string; score: number } => entry.score != null)
+        .sort((a, b) => {
+            if (a.score !== b.score) {
+                return a.score - b.score;
+            }
+            return a.username.localeCompare(b.username);
+        });
+
+    const out: Record<number, number> = {};
+    scored.forEach((entry, index) => {
+        out[entry.userId] = index + 1;
+    });
+    return out;
 }
 
 const FinalScoreScreen: React.FC<FinalScoreScreenProps> = ({
     isOpen,
     players,
     selfUserId,
-    onContinue,
+    totalRounds,
+    rematchCountdownSeconds,
+    myRematchDecision,
+    isSubmittingRematchDecision,
+    onChooseRematch,
 }) => {
     if (!isOpen) return null;
 
-    const sorted = [...players].sort((a, b) => a.totalScore - b.totalScore);
-    const winner = sorted[0];
-    const isSelfWinner = selfUserId != null && winner?.userId === selfUserId;
-    const hasSpecialWin = players.some(p => p.isSpecialWin);
+    const normalizedPlayers: FinalPlayerResolved[] = players.map((player) => ({
+        ...player,
+        totalScore: toFiniteNumber(player.totalScore),
+        roundScores: Array.isArray(player.roundScores)
+            ? player.roundScores.map((value) => toFiniteNumber(value))
+            : [],
+    }));
+
+    const roundsFromPlayers = normalizedPlayers.reduce(
+        (max, player) => Math.max(max, player.roundScores.length),
+        0,
+    );
+    const resolvedTotalRounds = Math.max(
+        Number.isFinite(Number(totalRounds)) ? Number(totalRounds) : 0,
+        roundsFromPlayers,
+    );
+
+    const currentTotalsByUserId: Record<number, number | null> = {};
+    normalizedPlayers.forEach((player) => {
+        currentTotalsByUserId[player.userId] = player.totalScore;
+    });
+    const sorted = sortPlayersByScore(normalizedPlayers, currentTotalsByUserId);
+    const currentRanksByUserId = getRanksByUserId(normalizedPlayers, currentTotalsByUserId);
+
+    const previousTotalsByUserId: Record<number, number | null> = {};
+    normalizedPlayers.forEach((player) => {
+        if (resolvedTotalRounds <= 1) {
+            previousTotalsByUserId[player.userId] = null;
+            return;
+        }
+
+        const previousRoundValues = player.roundScores.slice(0, resolvedTotalRounds - 1);
+        if (previousRoundValues.length === resolvedTotalRounds - 1 && previousRoundValues.every((value) => value != null)) {
+            previousTotalsByUserId[player.userId] = previousRoundValues.reduce(
+                (sum, value) => sum + Number(value),
+                0,
+            );
+            return;
+        }
+
+        const currentRoundScore = player.roundScores[resolvedTotalRounds - 1];
+        if (player.totalScore != null && currentRoundScore != null) {
+            previousTotalsByUserId[player.userId] = player.totalScore - currentRoundScore;
+            return;
+        }
+
+        previousTotalsByUserId[player.userId] = null;
+    });
+    const previousRanksByUserId = getRanksByUserId(normalizedPlayers, previousTotalsByUserId);
+
+    const showEarlyRoundsSummaryColumn = resolvedTotalRounds > 2;
+    const showPreviousRoundColumn = resolvedTotalRounds >= 2;
+    const hasSpecialWin = normalizedPlayers.some((player) => player.isSpecialWin);
+    const isDecisionLocked = myRematchDecision != null || isSubmittingRematchDecision;
+    const isUrgentCountdown = !isDecisionLocked && rematchCountdownSeconds <= 10;
+    const currentRoundIndex = resolvedTotalRounds - 1;
+    const currentRoundRanksByUserId = getRoundRanksByUserId(normalizedPlayers, currentRoundIndex);
+
+    const getRoundScoreText = (player: FinalPlayerResolved, roundIndex: number): string => {
+        if (roundIndex < 0 || roundIndex >= resolvedTotalRounds) {
+            return "-";
+        }
+        const value = player.roundScores[roundIndex] ?? null;
+        return toScoreText(value);
+    };
+
+    const getEarlyRoundsSummaryText = (player: FinalPlayerResolved): string => {
+        if (!showEarlyRoundsSummaryColumn) {
+            return "-";
+        }
+        const earlyRoundValues = player.roundScores.slice(0, resolvedTotalRounds - 2);
+        const numericEarlyRoundValues = earlyRoundValues.filter(
+            (value): value is number => value != null,
+        );
+        if (
+            earlyRoundValues.length !== Math.max(0, resolvedTotalRounds - 2) ||
+            numericEarlyRoundValues.length !== earlyRoundValues.length
+        ) {
+            return "-";
+        }
+        return toScoreText(
+            numericEarlyRoundValues.reduce((sum, value) => sum + value, 0),
+        );
+    };
+
+    const getMovementLabel = (player: FinalPlayerResolved): { text: string; className: string } | null => {
+        if (resolvedTotalRounds <= 1) {
+            return null;
+        }
+
+        const previousRank = previousRanksByUserId[player.userId];
+        const currentRank = currentRanksByUserId[player.userId];
+        const previousTotal = previousTotalsByUserId[player.userId];
+        const currentTotal = currentTotalsByUserId[player.userId];
+
+        if (
+            previousRank == null ||
+            currentRank == null ||
+            previousTotal == null ||
+            currentTotal == null
+        ) {
+            return null;
+        }
+
+        const delta = previousRank - currentRank;
+        if (delta > 0) {
+            return { text: "\u2191".repeat(delta), className: "final-score-movement-up" };
+        }
+        if (delta < 0) {
+            return { text: "\u2193".repeat(Math.abs(delta)), className: "final-score-movement-down" };
+        }
+        return null;
+    };
+
+    const getCurrentRoundLabel = (): string => {
+        return "Current Round";
+    };
+
+    const getEarlyRoundsLabel = (): string => {
+        const endRound = Math.max(1, resolvedTotalRounds - 2);
+        if (endRound <= 1) {
+            return "Round 1";
+        }
+        return `Rounds 1-${endRound}`;
+    };
+
+    const getPreviousRoundLabel = (): string => {
+        const previousRoundNumber = Math.max(1, resolvedTotalRounds - 1);
+        return `Round ${previousRoundNumber}`;
+    };
 
     return (
-        <div style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 3000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(0,0,0,0.85)",
-            backdropFilter: "blur(8px)",
-        }}>
-            <div style={{
-                backgroundColor: "rgba(20,20,30,0.98)",
-                border: "2px solid rgba(232, 168, 124, 0.4)",
-                borderRadius: "20px",
-                padding: "36px 40px",
-                minWidth: "340px",
-                maxWidth: "520px",
-                width: "90vw",
-                boxShadow: "0 12px 60px rgba(0,0,0,0.7)",
-                textAlign: "center",
-            }}>
-                {/* Title */}
-                <h1 style={{
-                    color: "#e8a87c",
-                    fontSize: "28px",
-                    fontWeight: "bold",
-                    marginBottom: "8px",
-                }}>
-                    🎮 Game Over!
-                </h1>
-
-                {/* Special Win Banner */}
-                {hasSpecialWin && (
-                    <div style={{
-                        backgroundColor: "rgba(168, 184, 122, 0.2)",
-                        border: "1px solid #a8b87a",
-                        borderRadius: "10px",
-                        padding: "8px 16px",
-                        marginBottom: "16px",
-                        color: "#a8b87a",
-                        fontWeight: "bold",
-                        fontSize: "14px",
-                    }}>
-                        ✨ Special Win! Two 12s + Two 13s = 0 points!
-                    </div>
-                )}
-
-                {/* Winner */}
-                {winner && (
-                    <div style={{ marginBottom: "24px" }}>
-                        <p style={{ color: "#ccc", fontSize: "14px", marginBottom: "4px" }}>
-                            Winner
-                        </p>
-                        <p style={{
-                            color: isSelfWinner ? "#e8a87c" : "#fff",
-                            fontSize: "24px",
-                            fontWeight: "bold",
-                        }}>
-                            🏆 {winner.username}{isSelfWinner ? " (You!)" : ""}
-                        </p>
-                        <p style={{ color: "#a8b87a", fontSize: "16px" }}>
-                            {winner.totalScore} points
-                        </p>
-                    </div>
-                )}
-
-                {/* Final Rankings */}
-                <div style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                    marginBottom: "24px",
-                }}>
-                    {sorted.map((player, index) => {
-                        const isSelf = selfUserId != null && player.userId === selfUserId;
-                        const medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}.`;
-                        return (
-                            <div key={player.userId} style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                padding: "10px 16px",
-                                borderRadius: "10px",
-                                backgroundColor: isSelf
-                                    ? "rgba(232, 168, 124, 0.15)"
-                                    : "rgba(255,255,255,0.05)",
-                                border: isSelf
-                                    ? "1px solid rgba(232, 168, 124, 0.35)"
-                                    : "1px solid transparent",
-                            }}>
-                                <span style={{ color: "#fff" }}>
-                                    {medal} {player.username}{isSelf ? " (You)" : ""}
-                                    {player.isSpecialWin ? " ✨" : ""}
-                                </span>
-                                <span style={{
-                                    color: index === 0 ? "#e8a87c" : "#ccc",
-                                    fontWeight: "bold",
-                                    fontSize: "16px",
-                                }}>
-                                    {player.totalScore} pts
-                                </span>
-                            </div>
-                        );
-                    })}
+        <div className="final-score-overlay">
+            <div className="final-score-card">
+                <div className="final-score-headbar">
+                    <h1 className="final-score-title">
+                        Round Finished
+                    </h1>
+                    <Button
+                        type="default"
+                        className="final-score-share-btn"
+                        onClick={() => {
+                            // Placeholder for #40 Share Result flow.
+                        }}
+                    >
+                        Share Result
+                    </Button>
                 </div>
 
-                <Button type="primary" onClick={onContinue} style={{ width: "100%" }}>
-                    Continue
-                </Button>
+                {hasSpecialWin && (
+                    <div className="final-score-special-win">
+                        Special Win! Two 12s + Two 13s = 0 points.
+                    </div>
+                )}
+
+                <div className="final-score-table-wrap">
+                    <table className="final-score-table">
+                        <colgroup>
+                            <col className="final-score-col-place" />
+                            <col className="final-score-col-username" />
+                            {showEarlyRoundsSummaryColumn ? <col /> : null}
+                            {showPreviousRoundColumn ? <col /> : null}
+                            <col />
+                            <col className="final-score-col-total" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th className="final-score-col-place final-score-col-place-head"></th>
+                                <th className="final-score-col-username final-score-col-username-head">Username</th>
+                                {showEarlyRoundsSummaryColumn ? (
+                                    <th>{getEarlyRoundsLabel()}</th>
+                                ) : null}
+                                {showPreviousRoundColumn ? (
+                                    <th>{getPreviousRoundLabel()}</th>
+                                ) : null}
+                                <th className="final-score-current-round-head">{getCurrentRoundLabel()}</th>
+                                <th className="final-score-col-total final-score-col-total-head">Total Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sorted.map((player, index) => {
+                                const isSelf = selfUserId != null && player.userId === selfUserId;
+                                const movement = getMovementLabel(player);
+                                return (
+                                    <tr key={player.userId} className={isSelf ? "final-score-row-self" : ""}>
+                                        <td className="final-score-col-place final-score-place-badge">{toOverallPlaceText(index + 1)}</td>
+                                        <td className="final-score-col-username">
+                                            <span className={`final-score-player-name${index === 0 ? " final-score-player-name-leading" : ""}`}>
+                                                {`${player.username}${player.isSpecialWin ? " *" : ""}`}
+                                            </span>
+                                            {movement ? (
+                                                <span className={`final-score-inline-movement ${movement.className}`}>{movement.text}</span>
+                                            ) : null}
+                                        </td>
+                                        {showEarlyRoundsSummaryColumn ? (
+                                            <td>{getEarlyRoundsSummaryText(player)}</td>
+                                        ) : null}
+                                        {showPreviousRoundColumn ? (
+                                            <td>{getRoundScoreText(player, resolvedTotalRounds === 2 ? 0 : resolvedTotalRounds - 2)}</td>
+                                        ) : null}
+                                        <td className="final-score-current-round-cell">
+                                            <span className={`final-score-current-round-score${currentRoundRanksByUserId[player.userId] === 1 ? " final-score-current-round-score-winning" : ""}`}>
+                                                {getRoundScoreText(player, currentRoundIndex)}
+                                            </span>
+                                            {currentRoundRanksByUserId[player.userId] != null && toRoundMedal(currentRoundRanksByUserId[player.userId]) ? (
+                                                <span className={`final-score-current-round-medal${currentRoundRanksByUserId[player.userId] === 1 ? " final-score-current-round-medal-winning" : ""}`}>
+                                                    {toRoundMedal(currentRoundRanksByUserId[player.userId])}
+                                                </span>
+                                            ) : null}
+                                        </td>
+                                        <td className="final-score-col-total">{toScoreText(player.totalScore)}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="final-score-rematch">
+                    <h2 className="final-score-rematch-title">
+                        Decide if you want a rematch{" "}
+                        <span className={`final-score-rematch-timer${isUrgentCountdown ? " final-score-rematch-timer-urgent" : ""}`}>
+                            {rematchCountdownSeconds}s
+                        </span>
+                    </h2>
+                    <p className="final-score-rematch-help">
+                        Continue keeps the same lobby code. Fresh creates a new lobby code.
+                    </p>
+                    {myRematchDecision != null && (
+                        <p className="final-score-rematch-choice">
+                            You chose: {
+                                myRematchDecision === "CONTINUE"
+                                    ? "Rematch (Continue Round Count)"
+                                    : myRematchDecision === "FRESH"
+                                        ? "Rematch (Fresh Game)"
+                                        : "No Rematch"
+                            }. Waiting for other players...
+                        </p>
+                    )}
+                    <div className="final-score-rematch-actions">
+                        <Button
+                            type={myRematchDecision === "CONTINUE" ? "primary" : "default"}
+                            className={`final-score-rematch-btn${!isDecisionLocked ? " final-score-rematch-btn-glow" : ""}${isUrgentCountdown ? " final-score-rematch-btn-urgent" : ""}`}
+                            disabled={myRematchDecision !== null || isSubmittingRematchDecision}
+                            loading={isSubmittingRematchDecision && myRematchDecision === null}
+                            onClick={() => onChooseRematch("CONTINUE")}
+                        >
+                            Rematch (Continue)
+                        </Button>
+                        <Button
+                            type={myRematchDecision === "FRESH" ? "primary" : "default"}
+                            className={`final-score-rematch-btn${!isDecisionLocked ? " final-score-rematch-btn-glow" : ""}${isUrgentCountdown ? " final-score-rematch-btn-urgent" : ""}`}
+                            disabled={myRematchDecision !== null || isSubmittingRematchDecision}
+                            onClick={() => onChooseRematch("FRESH")}
+                        >
+                            Rematch (Fresh)
+                        </Button>
+                        <Button
+                            type={myRematchDecision === "NONE" ? "primary" : "default"}
+                            danger
+                            className={`final-score-rematch-btn${!isDecisionLocked ? " final-score-rematch-btn-glow" : ""}${isUrgentCountdown ? " final-score-rematch-btn-urgent" : ""}`}
+                            disabled={myRematchDecision !== null || isSubmittingRematchDecision}
+                            onClick={() => onChooseRematch("NONE")}
+                        >
+                            No Rematch
+                        </Button>
+                    </div>
+                </div>
             </div>
         </div>
     );

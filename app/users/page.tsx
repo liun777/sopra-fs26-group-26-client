@@ -17,12 +17,19 @@ import type { TableProps } from "antd";
 
 type UserRow = User & {
   key: string;
-  games: number;
-  winRatePct: number | null;
+  roundsPlayed: number | null;
+  roundsWonValue: number;
+  roundsWonRatePct: number | null;
+  gamesPlayed: number | null;
+  gamesWonValue: number;
+  gamesWonRatePct: number | null;
   averageScore: number | null;
+  overallRankValue: number | null;
   presenceLabel: string;
   presenceKey: PresenceKey;
 };
+
+const USERS_PAGE_SIZE = 10;
 
 const columns: TableProps<UserRow>["columns"] = [
   {
@@ -47,34 +54,40 @@ const columns: TableProps<UserRow>["columns"] = [
     },
   },
   {
-    title: "Win Rate",
-    dataIndex: "winRatePct",
-    key: "winRatePct",
+    title: "Rounds",
+    dataIndex: "roundsPlayed",
+    key: "roundsPlayed",
     align: "center",
-    sorter: (a, b) => (a.winRatePct ?? -1) - (b.winRatePct ?? -1),
-    sortDirections: ["ascend", "descend", "ascend"],
-    render: (value) =>
-      value == null ? "-" : `${Number(value).toFixed(1).replace(/\.0$/, "")}%`,
-  },
-  {
-    title: "Games",
-    dataIndex: "games",
-    key: "games",
-    align: "center",
-    sorter: (a, b) => a.games - b.games,
+    sorter: (a, b) => (a.roundsPlayed ?? -1) - (b.roundsPlayed ?? -1),
     sortDirections: ["ascend", "descend"],
+    render: (value) => (value == null ? "-" : value),
   },
   {
-    title: "\u2300 Score",
+    title: "Avg Score",
     dataIndex: "averageScore",
     key: "averageScore",
     align: "center",
-    sorter: (a, b) => (a.averageScore ?? -1) - (b.averageScore ?? -1),
+    sorter: (a, b) => (a.averageScore ?? Number.MAX_SAFE_INTEGER) - (b.averageScore ?? Number.MAX_SAFE_INTEGER),
     sortDirections: ["ascend", "descend"],
     render: (value) =>
       value == null || Number.isNaN(Number(value))
         ? "-"
         : Number(value).toFixed(2).replace(/\.00$/, ""),
+  },
+  {
+    title: "Rounds Won %",
+    dataIndex: "roundsWonRatePct",
+    key: "roundsWonRatePct",
+    align: "center",
+    sorter: (a, b) => (a.roundsWonRatePct ?? -1) - (b.roundsWonRatePct ?? -1),
+    sortDirections: ["ascend", "descend", "ascend"],
+    render: (_, row) => {
+      if (!row.roundsPlayed || row.roundsPlayed <= 0) {
+        return "-";
+      }
+      const pctText = Number(row.roundsWonRatePct ?? 0).toFixed(1).replace(/\.0$/, "");
+      return `${row.roundsWonValue}/${row.roundsPlayed} (${pctText}%)`;
+    },
   },
   {
     title: "Status",
@@ -94,6 +107,95 @@ const columns: TableProps<UserRow>["columns"] = [
   },
 ];
 
+const leaderboardColumns: TableProps<UserRow>["columns"] = [
+  {
+    title: "Rank",
+    dataIndex: "overallRankValue",
+    key: "overallRankValue",
+    align: "center",
+    width: "10%",
+    sorter: (a, b) => (a.overallRankValue ?? Number.MAX_SAFE_INTEGER) - (b.overallRankValue ?? Number.MAX_SAFE_INTEGER),
+    sortDirections: ["ascend", "descend"],
+    render: (value) => (value == null ? "-" : `#${value}`),
+  },
+  {
+    title: "Username",
+    dataIndex: "username",
+    key: "username",
+    align: "left",
+    className: "users-username-col",
+    width: "26%",
+    sorter: (a, b) =>
+      String(a.username ?? a.name ?? "").localeCompare(
+        String(b.username ?? b.name ?? ""),
+      ),
+    sortDirections: ["ascend", "descend"],
+    render: (value, row) => {
+      const username = String(value ?? row.name ?? "-").trim() || "-";
+      return (
+        <span className="users-username-cell" title={username}>
+          {username}
+        </span>
+      );
+    },
+  },
+  {
+    title: "Rounds",
+    dataIndex: "roundsPlayed",
+    key: "roundsPlayed",
+    align: "center",
+    width: "12%",
+    sorter: (a, b) => (a.roundsPlayed ?? -1) - (b.roundsPlayed ?? -1),
+    sortDirections: ["ascend", "descend"],
+    render: (value) => (value == null ? "-" : value),
+  },
+  {
+    title: "Avg Score",
+    dataIndex: "averageScore",
+    key: "averageScore",
+    align: "center",
+    width: "12%",
+    sorter: (a, b) => (a.averageScore ?? Number.MAX_SAFE_INTEGER) - (b.averageScore ?? Number.MAX_SAFE_INTEGER),
+    sortDirections: ["ascend", "descend"],
+    render: (value) =>
+      value == null || Number.isNaN(Number(value))
+        ? "-"
+        : Number(value).toFixed(2).replace(/\.00$/, ""),
+  },
+  {
+    title: "Rounds Won %",
+    dataIndex: "roundsWonRatePct",
+    key: "roundsWonRatePct",
+    align: "center",
+    width: "20%",
+    sorter: (a, b) => (a.roundsWonRatePct ?? -1) - (b.roundsWonRatePct ?? -1),
+    sortDirections: ["ascend", "descend"],
+    render: (_, row) => {
+      if (!row.roundsPlayed || row.roundsPlayed <= 0) {
+        return "-";
+      }
+      const pctText = Number(row.roundsWonRatePct ?? 0).toFixed(1).replace(/\.0$/, "");
+      return `${row.roundsWonValue}/${row.roundsPlayed} (${pctText}%)`;
+    },
+  },
+  {
+    title: "Games Won %",
+    dataIndex: "gamesWonRatePct",
+    key: "gamesWonRatePct",
+    align: "center",
+    width: "20%",
+    sorter: (a, b) => (a.gamesWonRatePct ?? -1) - (b.gamesWonRatePct ?? -1),
+    sortDirections: ["ascend", "descend"],
+    render: (_, row) => {
+      if (!row.gamesPlayed || row.gamesPlayed <= 0) {
+        return "-";
+      }
+      const pctText = Number(row.gamesWonRatePct ?? 0).toFixed(1).replace(/\.0$/, "");
+      return `${row.gamesWonValue}/${row.gamesPlayed} (${pctText}%)`;
+    },
+  },
+];
+
 const UsersPage: React.FC = () => {
   const router = useRouter();
   const apiService = useApi();
@@ -103,6 +205,8 @@ const UsersPage: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 1000);
+  const [leaderboardSearchTerm, setLeaderboardSearchTerm] = useState("");
+  const debouncedLeaderboardSearchTerm = useDebouncedValue(leaderboardSearchTerm, 1000);
   const [liveConnected, setLiveConnected] = useState(false);
 
   const fetchUsers = useCallback(async () => {
@@ -161,41 +265,62 @@ const UsersPage: React.FC = () => {
   const rows: UserRow[] = useMemo(
     () =>
       (users ?? [])
-        .filter((user) => String(user.id ?? "").trim() !== userId.trim())
         .map((user) => {
-          const wins = Number(user.gamesWon ?? 0);
-          const gamesPlayedRaw = (
-            user as User & { gamesPlayed?: number | null; games?: number | null }
-          ).gamesPlayed ?? (
-            user as User & { gamesPlayed?: number | null; games?: number | null }
-          ).games ?? 0;
+          const rowWithLegacyMetrics = user as User & {
+            gamesPlayed?: number | null;
+            games?: number | null;
+          };
+          const roundsWon = Number(user.roundsWon ?? 0);
+          const roundsPlayedRaw = user.roundsPlayed;
+          const roundsPlayed = Number.isFinite(Number(roundsPlayedRaw))
+            ? Number(roundsPlayedRaw)
+            : null;
+          const roundsWonRatePct =
+            roundsPlayed != null && roundsPlayed > 0 ? (roundsWon / roundsPlayed) * 100 : null;
+          const gamesWonValue = Number(user.gamesWon ?? 0);
+          const gamesPlayedRaw = rowWithLegacyMetrics.gamesPlayed ?? rowWithLegacyMetrics.games;
           const gamesPlayed = Number.isFinite(Number(gamesPlayedRaw))
             ? Number(gamesPlayedRaw)
-            : 0;
-          const winRatePct =
-            gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : null;
+            : null;
+          const gamesWonRatePct =
+            gamesPlayed != null && gamesPlayed > 0 ? (gamesWonValue / gamesPlayed) * 100 : null;
           const presenceKey = toPresenceKey(user.status);
           const averageScoreRaw = user.averageScorePerRound;
           const averageScore =
             averageScoreRaw == null || !Number.isFinite(Number(averageScoreRaw))
               ? null
               : Number(averageScoreRaw);
+          const rankRaw = user.overallRank;
+          const overallRankValue =
+            rankRaw == null || !Number.isFinite(Number(rankRaw))
+              ? null
+              : Number(rankRaw);
           return {
             ...user,
             key: String(user.id ?? ""),
-            games: gamesPlayed,
-            winRatePct,
+            roundsPlayed,
+            roundsWonValue: roundsWon,
+            roundsWonRatePct,
+            gamesPlayed,
+            gamesWonValue,
+            gamesWonRatePct,
             averageScore,
+            overallRankValue,
             presenceLabel: toPresenceLabel(presenceKey),
             presenceKey,
           };
         }),
-    [users, userId],
+    [users],
+  );
+
+  const userRows = useMemo(
+    () => rows.filter((user) => String(user.id ?? "").trim() !== userId.trim()),
+    [rows, userId],
   );
 
   const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
   const filteredUsers =
-    rows?.filter((user) => {
+    userRows?.filter((user) => {
       if (!normalizedSearch) {
         return true;
       }
@@ -207,6 +332,36 @@ const UsersPage: React.FC = () => {
         name.includes(normalizedSearch) ||
         status.includes(normalizedSearch)
       );
+    }) ?? [];
+
+  const leaderboardRows = useMemo(
+    () =>
+      rows
+        .filter((row) => row.overallRankValue != null)
+        .sort((a, b) => {
+          const rankDiff = (a.overallRankValue as number) - (b.overallRankValue as number);
+          if (rankDiff !== 0) {
+            return rankDiff;
+          }
+          const roundsDiff = (b.roundsPlayed ?? -1) - (a.roundsPlayed ?? -1);
+          if (roundsDiff !== 0) {
+            return roundsDiff;
+          }
+          return String(a.username ?? a.name ?? "").localeCompare(
+            String(b.username ?? b.name ?? ""),
+          );
+        }),
+    [rows],
+  );
+
+  const normalizedLeaderboardSearch = debouncedLeaderboardSearchTerm.trim().toLowerCase();
+  const filteredLeaderboardRows =
+    leaderboardRows?.filter((row) => {
+      if (!normalizedLeaderboardSearch) {
+        return true;
+      }
+      const username = String(row.username ?? row.name ?? "").toLowerCase();
+      return username.includes(normalizedLeaderboardSearch);
     }) ?? [];
 
   const handleBack = () => {
@@ -261,7 +416,14 @@ const UsersPage: React.FC = () => {
                   dataSource={filteredUsers}
                   rowKey="key"
                   size="small"
-                  pagination={false}
+                  tableLayout="fixed"
+                  pagination={{
+                    pageSize: USERS_PAGE_SIZE,
+                    showSizeChanger: false,
+                    hideOnSinglePage: false,
+                    responsive: true,
+                    position: ["bottomCenter"],
+                  }}
                   rowClassName={() => "users-overview-row"}
                   onRow={(row: UserRow) => ({
                     onClick: () => router.push(`/users/${row.id}`),
@@ -269,6 +431,47 @@ const UsersPage: React.FC = () => {
                 />
               </>
             ) : null}
+          </Card>
+
+          <Card
+            className="dashboard-container"
+            title={
+              <div className="lobby-section-title-row">
+                <span className="dashboard-section-title">Leaderboard</span>
+              </div>
+            }
+          >
+            <div className="users-overview-toolbar">
+              <Input
+                value={leaderboardSearchTerm}
+                allowClear
+                className="users-overview-search"
+                placeholder="Search by Username"
+                onChange={(event) => setLeaderboardSearchTerm(event.target.value)}
+              />
+            </div>
+            <Table<UserRow>
+              className="users-overview-table responsive-list-table"
+              columns={leaderboardColumns}
+              dataSource={filteredLeaderboardRows}
+              rowKey="key"
+              size="small"
+              tableLayout="fixed"
+              pagination={{
+                pageSize: USERS_PAGE_SIZE,
+                showSizeChanger: false,
+                hideOnSinglePage: false,
+                responsive: true,
+                position: ["bottomCenter"],
+              }}
+              rowClassName={() => "users-overview-row"}
+              onRow={(row: UserRow) => ({
+                onClick: () => router.push(`/users/${row.id}`),
+              })}
+              locale={{
+                emptyText: "No ranked players available yet.",
+              }}
+            />
           </Card>
 
           <Card className="dashboard-container">

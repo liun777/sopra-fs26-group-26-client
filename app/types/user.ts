@@ -7,6 +7,12 @@ export interface User {
   bio: string | null;
   creationDate: string | null;
   gamesWon: number | null;
+  roundsWon: number | null;
+  roundsPlayed?: number | null;
+  rounds?: number | null;
+  roundCount?: number | null;
+  gamesPlayed?: number | null;
+  games?: number | null;
   averageScorePerRound: number | null;
   overallRank: number | null;
 }

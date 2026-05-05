@@ -1,7 +1,4 @@
-// A UI component (accessible via a "Score" button) that shows the cumulative totals of the current session.
-//#42
-//Implement a button (e.g., a "Podium" icon) that allows players to view the current total scores at any time during gameplay.
-//#36
+// "Score" button that shows the cumulative totals of the current session.
 
 import React from "react";
 import { Button } from "antd";
@@ -9,101 +6,265 @@ import { Button } from "antd";
 type PlayerScore = {
     userId: number;
     username: string;
-    totalScore: number;
-    roundScore?: number;
+    totalScore: number | null;
+    roundScores?: Array<number | null> | null;
+};
+
+type PlayerScoreResolved = Omit<PlayerScore, "roundScores" | "totalScore"> & {
+    totalScore: number | null;
+    roundScores: Array<number | null>;
 };
 
 interface ScoresProps {
     isOpen: boolean;
     onClose: () => void;
-    scores: PlayerScore[];
+    players: PlayerScore[];
     selfUserId: number | null;
-    // TODO: Backend needs GET /games/{gameId}/scores endpoint
+    totalRounds?: number | null;
+}
+
+function toFiniteNumber(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toScoreText(value: number | null): string {
+    return value == null ? "-" : String(Math.trunc(value));
+}
+
+function toPlaceBadge(rank: number): string {
+    if (rank === 1) return "\uD83E\uDD47";
+    if (rank === 2) return "\uD83E\uDD48";
+    if (rank === 3) return "\uD83E\uDD49";
+    if (rank === 4) return "\uD83C\uDFC5";
+    return String(rank);
+}
+
+function sortPlayersByScore(players: PlayerScoreResolved[], scoreByUserId: Record<number, number | null>): PlayerScoreResolved[] {
+    return [...players].sort((a, b) => {
+        const scoreA = scoreByUserId[a.userId];
+        const scoreB = scoreByUserId[b.userId];
+        if (scoreA == null && scoreB == null) {
+            return a.username.localeCompare(b.username);
+        }
+        if (scoreA == null) return 1;
+        if (scoreB == null) return -1;
+        if (scoreA !== scoreB) return scoreA - scoreB;
+        return a.username.localeCompare(b.username);
+    });
+}
+
+function getRanksByUserId(players: PlayerScoreResolved[], scoreByUserId: Record<number, number | null>): Record<number, number> {
+    const sorted = sortPlayersByScore(players, scoreByUserId);
+    const out: Record<number, number> = {};
+    sorted.forEach((player, index) => {
+        out[player.userId] = index + 1;
+    });
+    return out;
 }
 
 const Scores: React.FC<ScoresProps> = ({
     isOpen,
     onClose,
-    scores,
+    players,
     selfUserId,
+    totalRounds,
 }) => {
     if (!isOpen) return null;
 
-    const sorted = [...scores].sort((a, b) => a.totalScore - b.totalScore);
+    const normalizedPlayers: PlayerScoreResolved[] = players.map((player) => ({
+        ...player,
+        totalScore: toFiniteNumber(player.totalScore),
+        roundScores: Array.isArray(player.roundScores)
+            ? player.roundScores.map((value) => toFiniteNumber(value))
+            : [],
+    }));
+
+    const roundsFromPlayers = normalizedPlayers.reduce(
+        (max, player) => Math.max(max, player.roundScores.length),
+        0,
+    );
+    const resolvedTotalRounds = Math.max(
+        Number.isFinite(Number(totalRounds)) ? Number(totalRounds) : 0,
+        roundsFromPlayers,
+    );
+
+    // Current-scores view intentionally excludes the running/current round.
+    const completedRoundsForScores = Math.max(0, resolvedTotalRounds - 1);
+    const hasRanking = completedRoundsForScores > 0;
+    const showEarlyRoundsSummaryColumn = completedRoundsForScores > 2;
+    const showPreviousRoundColumn = completedRoundsForScores >= 2;
+    const scoreColumnCount = completedRoundsForScores > 0
+        ? (showEarlyRoundsSummaryColumn ? 1 : 0) + (showPreviousRoundColumn ? 1 : 0) + 1
+        : 1;
+    const scoreGroupLabel = scoreColumnCount <= 1 ? "Score" : "Scores";
+
+    const totalsForDisplayByUserId: Record<number, number | null> = {};
+    normalizedPlayers.forEach((player) => {
+        if (!hasRanking) {
+            totalsForDisplayByUserId[player.userId] = null;
+            return;
+        }
+
+        const completedRoundValues = player.roundScores.slice(0, completedRoundsForScores);
+        if (
+            completedRoundValues.length === completedRoundsForScores &&
+            completedRoundValues.every((value) => value != null)
+        ) {
+            totalsForDisplayByUserId[player.userId] = completedRoundValues.reduce(
+                (sum, value) => sum + Number(value),
+                0,
+            );
+            return;
+        }
+
+        totalsForDisplayByUserId[player.userId] = null;
+    });
+
+    const sorted = hasRanking
+        ? sortPlayersByScore(normalizedPlayers, totalsForDisplayByUserId)
+        : [...normalizedPlayers].sort((a, b) => a.username.localeCompare(b.username));
+    const ranksByUserId = hasRanking
+        ? getRanksByUserId(normalizedPlayers, totalsForDisplayByUserId)
+        : {};
+
+    const previousTotalsByUserId: Record<number, number | null> = {};
+    normalizedPlayers.forEach((player) => {
+        if (completedRoundsForScores <= 1) {
+            previousTotalsByUserId[player.userId] = null;
+            return;
+        }
+        const previousRoundValues = player.roundScores.slice(0, completedRoundsForScores - 1);
+        if (
+            previousRoundValues.length === completedRoundsForScores - 1 &&
+            previousRoundValues.every((value) => value != null)
+        ) {
+            previousTotalsByUserId[player.userId] = previousRoundValues.reduce(
+                (sum, value) => sum + Number(value),
+                0,
+            );
+            return;
+        }
+        previousTotalsByUserId[player.userId] = null;
+    });
+    const previousRanksByUserId = getRanksByUserId(normalizedPlayers, previousTotalsByUserId);
+
+    const getRoundScoreText = (player: PlayerScoreResolved, roundIndex: number): string => {
+        if (!hasRanking || roundIndex < 0 || roundIndex >= completedRoundsForScores) {
+            return "-";
+        }
+        return toScoreText(player.roundScores[roundIndex] ?? null);
+    };
+
+    const getEarlyRoundsSummaryText = (player: PlayerScoreResolved): string => {
+        if (!showEarlyRoundsSummaryColumn || !hasRanking) {
+            return "-";
+        }
+        const earlyRoundValues = player.roundScores.slice(0, completedRoundsForScores - 2);
+        const numericEarlyRoundValues = earlyRoundValues.filter(
+            (value): value is number => value != null,
+        );
+        if (
+            earlyRoundValues.length !== Math.max(0, completedRoundsForScores - 2) ||
+            numericEarlyRoundValues.length !== earlyRoundValues.length
+        ) {
+            return "-";
+        }
+        return toScoreText(
+            numericEarlyRoundValues.reduce((sum, value) => sum + value, 0),
+        );
+    };
+
+    const getMovementLabel = (player: PlayerScoreResolved): { text: string; className: string } => {
+        if (completedRoundsForScores <= 1 || !hasRanking) {
+            return { text: "-", className: "final-score-movement-neutral" };
+        }
+
+        const previousRank = previousRanksByUserId[player.userId];
+        const currentRank = ranksByUserId[player.userId];
+        const previousTotal = previousTotalsByUserId[player.userId];
+        const currentTotal = totalsForDisplayByUserId[player.userId];
+
+        if (
+            previousRank == null ||
+            currentRank == null ||
+            previousTotal == null ||
+            currentTotal == null
+        ) {
+            return { text: "-", className: "final-score-movement-neutral" };
+        }
+
+        const delta = previousRank - currentRank;
+        if (delta > 0) return { text: `\u2191 ${delta}`, className: "final-score-movement-up" };
+        if (delta < 0) return { text: `\u2193 ${Math.abs(delta)}`, className: "final-score-movement-down" };
+        return { text: "-", className: "final-score-movement-neutral" };
+    };
 
     return (
-        <div style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 2000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(4px)",
-        }}>
-            <div style={{
-                backgroundColor: "rgba(30,30,40,0.97)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                borderRadius: "16px",
-                padding: "28px 32px",
-                minWidth: "320px",
-                maxWidth: "480px",
-                width: "90vw",
-                boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
-            }}>
-                <h2 style={{
-                    color: "#e8a87c",
-                    fontWeight: "bold",
-                    fontSize: "22px",
-                    marginBottom: "20px",
-                    textAlign: "center",
-                }}>
-                    🏆 Current Scores
-                </h2>
+        <div className="current-scores-overlay">
+            <div className="current-scores-card">
+                <div className="final-score-headbar">
+                    <h2 className="final-score-title">Current Scores</h2>
+                    <Button type="default" onClick={onClose}>Close</Button>
+                </div>
 
-                {scores.length === 0 ? (
-                    <p style={{ color: "#ccc", textAlign: "center" }}>
-                        {/* TODO: Backend needs GET /games/{gameId}/scores */}
-                        No scores available yet.
-                    </p>
-                ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                        {sorted.map((player, index) => {
-                            const isSelf = selfUserId != null && player.userId === selfUserId;
-                            const medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}.`;
-                            return (
-                                <div key={player.userId} style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    padding: "10px 16px",
-                                    borderRadius: "10px",
-                                    backgroundColor: isSelf
-                                        ? "rgba(232, 168, 124, 0.18)"
-                                        : "rgba(255,255,255,0.05)",
-                                    border: isSelf
-                                        ? "1px solid rgba(232, 168, 124, 0.4)"
-                                        : "1px solid transparent",
-                                }}>
-                                    <span style={{ color: "#fff", fontSize: "16px" }}>
-                                        {medal} {player.username}{isSelf ? " (You)" : ""}
-                                    </span>
-                                    <span style={{
-                                        color: "#e8a87c",
-                                        fontWeight: "bold",
-                                        fontSize: "18px",
-                                    }}>
-                                        {player.totalScore} pts
-                                    </span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-
-                <div style={{ marginTop: "20px", textAlign: "center" }}>
-                    <Button type="primary" onClick={onClose}>Close</Button>
+                <div className="final-score-table-wrap">
+                    <table className="final-score-table">
+                        <colgroup>
+                            <col className="final-score-col-place" />
+                            <col className="final-score-col-username" />
+                            <col className="final-score-col-delta" />
+                            {Array.from({ length: scoreColumnCount }).map((_, index) => (
+                                <col key={`score-col-${index}`} />
+                            ))}
+                            <col className="final-score-col-total" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th className="final-score-col-place final-score-col-place-head"></th>
+                                <th className="final-score-col-username final-score-col-username-head">Username</th>
+                                <th className="final-score-col-delta"></th>
+                                <th colSpan={scoreColumnCount}>{scoreGroupLabel}</th>
+                                <th className="final-score-col-total final-score-col-total-head">Total Scores</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sorted.map((player) => {
+                                const isSelf = selfUserId != null && player.userId === selfUserId;
+                                const movement = getMovementLabel(player);
+                                const rank = ranksByUserId[player.userId];
+                                return (
+                                    <tr key={player.userId} className={isSelf ? "final-score-row-self" : ""}>
+                                        <td className="final-score-col-place final-score-place-badge">
+                                            {hasRanking && rank != null ? toPlaceBadge(rank) : ""}
+                                        </td>
+                                        <td className="final-score-col-username">
+                                            <span className={`final-score-player-name${hasRanking && rank === 1 ? " final-score-player-name-leading" : ""}`}>
+                                                {player.username}
+                                            </span>
+                                        </td>
+                                        <td className="final-score-col-delta">
+                                            <span className={movement.className}>{movement.text}</span>
+                                        </td>
+                                        {hasRanking ? (
+                                            <>
+                                                {showEarlyRoundsSummaryColumn ? (
+                                                    <td>{getEarlyRoundsSummaryText(player)}</td>
+                                                ) : null}
+                                                {showPreviousRoundColumn ? (
+                                                    <td>{getRoundScoreText(player, completedRoundsForScores === 2 ? 0 : completedRoundsForScores - 2)}</td>
+                                                ) : null}
+                                                <td>{getRoundScoreText(player, completedRoundsForScores - 1)}</td>
+                                            </>
+                                        ) : (
+                                            <td>-</td>
+                                        )}
+                                        <td className="final-score-col-total">{hasRanking ? toScoreText(totalsForDisplayByUserId[player.userId]) : "-"}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

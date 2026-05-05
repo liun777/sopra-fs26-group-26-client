@@ -12,27 +12,26 @@ RUN npm ci --loglevel=error
 COPY . .
 # Build the app
 RUN node --no-opt ./node_modules/next/dist/bin/next build
-# Delete all non-production dependencies to make copy in line 28 more efficient
-RUN npm prune --production
 
 # Use small production image
 FROM node:20-alpine
 # Set the env to "production"
 ENV NODE_ENV=production
-# Set npm cache to a directory the non-root user can access
-RUN npm config set cache /app/.npm-cache --global
-# Get non-root user
-USER 3301
 # Set container working directory to /app
 WORKDIR /app
-# Copy node modules and app
-COPY --chown=node:node --from=build /app/node_modules /app/node_modules
-#COPY --chown=node:node --from=build /app/build build
-COPY --chown=node:node --from=build /app/.next .next
-COPY --chown=node:node --from=build /app/public public
-COPY --chown=node:node --from=build /app/package.json package.json
+# Set npm cache to a directory the non-root user can access
+RUN npm config set cache /app/.npm-cache --global
+# Install runtime dependencies only
+COPY package*.json ./
+RUN npm ci --omit=dev --loglevel=error
+# Get non-root user
+USER 3301
+# Copy app build output
+COPY --chown=3301:3301 --from=build /app/.next .next
+COPY --chown=3301:3301 --from=build /app/public public
+COPY --chown=3301:3301 --from=build /app/package.json package.json
 # Expose port for serve
 EXPOSE 3000
 # Start app
 #CMD [ "npx", "serve", "-s", "build" ]
-CMD [ "npx", "next", "start" ]
+CMD [ "node", "./node_modules/next/dist/bin/next", "start" ]

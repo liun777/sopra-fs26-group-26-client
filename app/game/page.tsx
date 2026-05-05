@@ -24,6 +24,11 @@ interface Card {
 type PlayerHandSignal = {
     userId?: number | string | null;
     id?: number | string | null;
+    username?: string | null;
+    name?: string | null;
+    totalScore?: number | string | null;
+    roundScore?: number | string | null;
+    isSpecialWin?: boolean | null;
     cards?: CardViewSignal[] | null;
 };
 
@@ -63,6 +68,8 @@ type GameStateSignal = {
     afkTimeoutSeconds?: number | string | null;
     timedOutPlayerIds?: Array<number | string | null> | null;
     lastMoveEvent?: LastMoveEventSignal | null;
+    userScoresPerRound?: Array<Record<string, number | string | null>> | null;
+    totalScoreByUserId?: Record<string, number | string | null> | null;
     discardPileTop?: {
         value?: number | string | null;
         code?: string | null;
@@ -133,6 +140,19 @@ type ParsedMoveEvent = {
     actorUserId: number | null;
     primary: ParsedMoveStep;
     secondary: ParsedMoveStep | null;
+};
+
+type FinalRoundPlayerScore = {
+    userId: number;
+    username: string;
+    totalScore: number | null;
+    roundScores: Array<number | null>;
+    isSpecialWin?: boolean;
+};
+
+type FinalRoundScoresSnapshot = {
+    players: FinalRoundPlayerScore[];
+    totalRounds: number;
 };
 
 function getAbilityCardLabel(value?: number): string | undefined {
@@ -536,6 +556,241 @@ function toValidCardOrNull(candidate: unknown): Card | null {
     };
 }
 
+function toPlainRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return null;
+    }
+    return value as Record<string, unknown>;
+}
+
+function toFiniteScore(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toNumericUserId(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toUserIdKeyCandidates(userId: number): string[] {
+    const asInt = Math.trunc(userId);
+    return Array.from(new Set([String(userId), String(asInt)]));
+}
+
+function getMappedScore(record: Record<string, unknown> | null, userId: number): number | null {
+    if (!record) {
+        return null;
+    }
+    for (const candidateKey of toUserIdKeyCandidates(userId)) {
+        const value = toFiniteScore(record[candidateKey]);
+        if (value != null) {
+            return value;
+        }
+    }
+    return null;
+}
+
+function extractScoreboardRecords(payload: unknown): Record<string, unknown>[] {
+    const root = toPlainRecord(payload);
+    if (!root) {
+        return [];
+    }
+    const candidates: Record<string, unknown>[] = [root];
+    const nestedKeys = ["game", "session", "state", "data"];
+    for (const key of nestedKeys) {
+        const nested = toPlainRecord(root[key]);
+        if (nested) {
+            candidates.push(nested);
+        }
+    }
+    return candidates;
+}
+
+function extractRoundScoreMaps(payload: unknown): Record<string, unknown>[] {
+    const keys = [
+        "userScoresPerRound",
+        "roundScoresPerRound",
+        "roundScores",
+    ];
+    for (const record of extractScoreboardRecords(payload)) {
+        for (const key of keys) {
+            const candidate = record[key];
+            if (!Array.isArray(candidate)) {
+                continue;
+            }
+            const maps = candidate
+                .map((entry) => toPlainRecord(entry))
+                .filter((entry): entry is Record<string, unknown> => entry != null);
+            if (maps.length > 0) {
+                return maps;
+            }
+        }
+    }
+    return [];
+}
+
+function extractTotalScoreMap(payload: unknown): Record<string, unknown> | null {
+    const keys = [
+        "totalScoreByUserId",
+        "totalScoresByUserId",
+        "userTotalScores",
+        "scoresByUserId",
+        "totalScores",
+    ];
+    for (const record of extractScoreboardRecords(payload)) {
+        for (const key of keys) {
+            const candidate = toPlainRecord(record[key]);
+            if (candidate) {
+                return candidate;
+            }
+        }
+    }
+    return null;
+}
+
+function extractPayloadPlayerMeta(payload: unknown): Array<{
+    userId: number;
+    username: string;
+    totalScore: number | null;
+    roundScore: number | null;
+    isSpecialWin: boolean;
+}> {
+    const out: Array<{
+        userId: number;
+        username: string;
+        totalScore: number | null;
+        roundScore: number | null;
+        isSpecialWin: boolean;
+    }> = [];
+
+    for (const record of extractScoreboardRecords(payload)) {
+        const playersRaw = record.players;
+        if (!Array.isArray(playersRaw)) {
+            continue;
+        }
+        for (const entry of playersRaw) {
+            const player = toPlainRecord(entry);
+            if (!player) {
+                continue;
+            }
+            const userId = toNumericUserId(player.userId ?? player.id);
+            if (userId == null) {
+                continue;
+            }
+            out.push({
+                userId,
+                username: String(player.username ?? player.name ?? "").trim(),
+                totalScore: toFiniteScore(player.totalScore),
+                roundScore: toFiniteScore(player.roundScore),
+                isSpecialWin: player.isSpecialWin === true,
+            });
+        }
+        if (out.length > 0) {
+            return out;
+        }
+    }
+
+    return out;
+}
+
+function buildFinalRoundScoresSnapshot(
+    payload: unknown,
+    fallbackPlayerIds: number[],
+    playerNamesById: Record<number, string>,
+): FinalRoundScoresSnapshot | null {
+    const roundScoreMaps = extractRoundScoreMaps(payload);
+    const totalScoreMap = extractTotalScoreMap(payload);
+    const payloadPlayers = extractPayloadPlayerMeta(payload);
+    const payloadPlayerById = new Map<number, (typeof payloadPlayers)[number]>();
+    payloadPlayers.forEach((entry) => {
+        payloadPlayerById.set(entry.userId, entry);
+    });
+
+    let totalRounds = roundScoreMaps.length;
+    if (totalRounds === 0 && payloadPlayers.some((entry) => entry.roundScore != null)) {
+        totalRounds = 1;
+    }
+
+    const allIds = new Set<number>();
+    fallbackPlayerIds.forEach((id) => allIds.add(id));
+    payloadPlayers.forEach((entry) => allIds.add(entry.userId));
+    if (totalScoreMap) {
+        Object.keys(totalScoreMap).forEach((key) => {
+            const parsedId = toNumericUserId(key);
+            if (parsedId != null) {
+                allIds.add(parsedId);
+            }
+        });
+    }
+    roundScoreMaps.forEach((roundMap) => {
+        Object.keys(roundMap).forEach((key) => {
+            const parsedId = toNumericUserId(key);
+            if (parsedId != null) {
+                allIds.add(parsedId);
+            }
+        });
+    });
+
+    if (allIds.size === 0) {
+        return null;
+    }
+
+    const orderedIds: number[] = [];
+    fallbackPlayerIds.forEach((id) => {
+        if (allIds.has(id) && !orderedIds.includes(id)) {
+            orderedIds.push(id);
+        }
+    });
+    payloadPlayers.forEach((entry) => {
+        if (!orderedIds.includes(entry.userId)) {
+            orderedIds.push(entry.userId);
+        }
+    });
+    Array.from(allIds)
+        .sort((a, b) => a - b)
+        .forEach((id) => {
+            if (!orderedIds.includes(id)) {
+                orderedIds.push(id);
+            }
+        });
+
+    const players: FinalRoundPlayerScore[] = orderedIds.map((userId) => {
+        const payloadMeta = payloadPlayerById.get(userId);
+        const roundScores = Array.from({ length: totalRounds }, () => null as number | null);
+        roundScoreMaps.forEach((roundMap, roundIndex) => {
+            roundScores[roundIndex] = getMappedScore(roundMap, userId);
+        });
+        if (totalRounds > 0 && payloadMeta?.roundScore != null && roundScores[totalRounds - 1] == null) {
+            roundScores[totalRounds - 1] = payloadMeta.roundScore;
+        }
+
+        let totalScore = getMappedScore(totalScoreMap, userId);
+        if (totalScore == null) {
+            totalScore = payloadMeta?.totalScore ?? null;
+        }
+        if (totalScore == null && roundScores.length > 0 && roundScores.every((value) => value != null)) {
+            totalScore = roundScores.reduce((sum, value) => sum + Number(value), 0);
+        }
+
+        const username = String(
+            payloadMeta?.username ||
+            playerNamesById[userId] ||
+            `Player ${userId}`,
+        ).trim();
+
+        return {
+            userId,
+            username: username || `Player ${userId}`,
+            totalScore,
+            roundScores,
+            isSpecialWin: payloadMeta?.isSpecialWin === true,
+        };
+    });
+
+    return { players, totalRounds };
+}
+
 const Game = () => {
   const apiService = useApi();
   const router = useRouter();
@@ -656,6 +911,17 @@ const Game = () => {
       const [orderedPlayerIds, setOrderedPlayerIds] = useState<number[]>([]);
       const [playerCardsById, setPlayerCardsById] = useState<Record<number, SeatCardView[]>>({});
       const [playerNamesById, setPlayerNamesById] = useState<Record<number, string>>({});
+      // Final scores state (declare early so handlers can use them safely)
+      const [finalScores, setFinalScores] = useState<Array<{
+          userId: number;
+          username: string;
+          totalScore: number | null;
+          roundScores?: Array<number | null>;
+          isSpecialWin?: boolean;
+      }>>([]);
+      const [finalScoreTotalRounds, setFinalScoreTotalRounds] = useState<number>(0);
+      const tablePlayerIdsRef = useRef<number[]>([]);
+      const playerNamesByIdRef = useRef<Record<number, string>>({});
       const [timedOutPlayerIds, setTimedOutPlayerIds] = useState<number[]>([]);
       const [currentTurnUserId, setCurrentTurnUserId] = useState<number | null>(null);
       const [turnTimeLeft, setTurnTimeLeft] = useState<number>(DEFAULT_TURN_SECONDS);
@@ -663,7 +929,8 @@ const Game = () => {
       const [isSubmittingRematchDecision, setIsSubmittingRematchDecision] = useState<boolean>(false);
       const [caboRevealCountdown, setCaboRevealCountdown] = useState<number>(0);
       const [rematchCountdown, setRematchCountdown] = useState<number>(0);
-      const [myRematchDecision, setMyRematchDecision] = useState<string | null>(null);
+      const [myRematchDecision, setMyRematchDecision] =
+          useState<"CONTINUE" | "FRESH" | "NONE" | null>(null);
       const turnDeadlineMsRef = useRef<number | null>(null);
       const caboRevealDeadlineMsRef = useRef<number | null>(null);
       const rematchDeadlineMsRef = useRef<number | null>(null);
@@ -793,6 +1060,14 @@ const Game = () => {
       useEffect(() => {
           playerCardsByIdRef.current = playerCardsById;
       }, [playerCardsById]);
+
+      useEffect(() => {
+          tablePlayerIdsRef.current = tablePlayerIds;
+      }, [tablePlayerIds]);
+
+      useEffect(() => {
+          playerNamesByIdRef.current = playerNamesById;
+      }, [playerNamesById]);
 
       useEffect(() => {
           discardTopCardRef.current = discardTopCard;
@@ -1090,6 +1365,17 @@ const Game = () => {
                                   arraysEqual(previous, nextPlayerIds) ? previous : nextPlayerIds
                               );
                           }
+
+                          const finalScoreSnapshot = buildFinalRoundScoresSnapshot(
+                              payload,
+                              tablePlayerIdsRef.current,
+                              playerNamesByIdRef.current,
+                          );
+                          if (finalScoreSnapshot) {
+                              setFinalScores(finalScoreSnapshot.players);
+                              setFinalScoreTotalRounds(finalScoreSnapshot.totalRounds);
+                          }
+
                           const previousPlayerCardsById = playerCardsByIdRef.current;
                           const previousDiscardTopCard = discardTopCardRef.current;
                           const previousTurnUserId = currentTurnUserIdRef.current;
@@ -1460,20 +1746,43 @@ const Game = () => {
               window.clearInterval(intervalId);
           };
       }, [isCaboRevealPhase, caboRevealDurationSeconds]);
-      // #34: Show final screen when cabo_reveal starts
+      // #34: Build final score payload once reveal window has ended and rematch voting opens
       useEffect(() => {
-          if (!isCaboRevealPhase) return;
+          if (!isAwaitingRematchDecision) return;
 
-          // TODO: Backend needs to send final scores in game state
-          // For now build placeholder from known players
-          const placeholderFinal = tablePlayerIds.map(id => ({
-              userId: id,
-              username: playerNamesById[id] ?? `Player ${id}`,
-              totalScore: 0, // TODO: real score from backend
-          }));
-          setFinalScores(placeholderFinal);
-          setShowFinalScreen(true);
-      }, [isCaboRevealPhase]);
+          setFinalScores((previous) => {
+              const previousById = new Map(previous.map((entry) => [entry.userId, entry] as const));
+              const combinedIds: number[] = [...tablePlayerIds];
+              previous.forEach((entry) => {
+                  if (!combinedIds.includes(entry.userId)) {
+                      combinedIds.push(entry.userId);
+                  }
+              });
+
+              return combinedIds.map((id) => {
+                  const existing = previousById.get(id);
+                  const nextUsername = playerNamesById[id] ?? existing?.username ?? `Player ${id}`;
+                  if (existing) {
+                      return {
+                          ...existing,
+                          username: nextUsername,
+                      };
+                  }
+                  return {
+                      userId: id,
+                      username: nextUsername,
+                      totalScore: null,
+                      roundScores: [],
+                  };
+              });
+          });
+      }, [isAwaitingRematchDecision, tablePlayerIds, playerNamesById]);
+
+      useEffect(() => {
+          if (!isAwaitingRematchDecision) {
+              setFinalScoreTotalRounds(0);
+          }
+      }, [isAwaitingRematchDecision]);
       useEffect(() => {
           if (!isAwaitingRematchDecision || !gameId || !token) {
               setRematchCountdown(0);
@@ -2656,39 +2965,44 @@ const callCabo = () => {
 
 // #36/#42: Scores
 const [isScoresOpen, setIsScoresOpen] = useState<boolean>(false);
-const [gameScores, setGameScores] = useState<Array<{
-    userId: number;
-    username: string;
-    totalScore: number;
-    roundScore?: number;
-}>>([]);
-// #34: Final Score Screen
-const [showFinalScreen, setShowFinalScreen] = useState<boolean>(false);
-const [finalScores, setFinalScores] = useState<Array<{
-    userId: number;
-    username: string;
-    totalScore: number;
-    isSpecialWin?: boolean;
-}>>([]);
 
-// #36/#42: fetch and show scores
-const handleShowScores = async () => {
-    if (!gameId || !token) return;
-    try {
-        // TODO: Backend needs GET /games/{gameId}/scores endpoint
-        // const scores = await apiService.getWithAuth(`/games/${gameId}/scores`, token);
-        // setGameScores(scores);
-
-        // For now show placeholder with player names from playerNamesById
-        const placeholderScores = tablePlayerIds.map(id => ({
+const scoreModalPlayers = useMemo(() => {
+    if (finalScores.length === 0) {
+        return tablePlayerIds.map((id) => ({
             userId: id,
             username: playerNamesById[id] ?? `Player ${id}`,
-            totalScore: 0, // TODO: real score from backend
+            totalScore: null,
+            roundScores: [] as Array<number | null>,
         }));
-        setGameScores(placeholderScores);
-    } catch (error) {
-        console.error("Failed to fetch scores:", error);
     }
+
+    const byId = new Map(finalScores.map((entry) => [entry.userId, entry] as const));
+    const ids = [...tablePlayerIds];
+    finalScores.forEach((entry) => {
+        if (!ids.includes(entry.userId)) {
+            ids.push(entry.userId);
+        }
+    });
+
+    return ids.map((id) => {
+        const existing = byId.get(id);
+        if (existing) {
+            return {
+                ...existing,
+                username: playerNamesById[id] ?? existing.username ?? `Player ${id}`,
+            };
+        }
+        return {
+            userId: id,
+            username: playerNamesById[id] ?? `Player ${id}`,
+            totalScore: null,
+            roundScores: [] as Array<number | null>,
+        };
+    });
+}, [finalScores, tablePlayerIds, playerNamesById]);
+
+// #36/#42: show scoreboard modal
+const handleShowScores = () => {
     setIsScoresOpen(true);
 };
 
@@ -2843,58 +3157,6 @@ const playerListRows = tablePlayerIds.map((id) => {
                       </div>
                   )}
 
-                  {isAwaitingRematchDecision && (
-                      <div className="game-rematch-overlay" role="dialog" aria-modal="true" aria-live="polite">
-                          <div className="game-rematch-card">
-                              <h2 className="game-rematch-title">Round Finished</h2>
-                              <p className="game-rematch-text">
-                                  Rematch decision closes in{" "}
-                                  <span className="game-rematch-countdown">{displayedRematchCountdown}s</span>
-                              </p>
-                              <p className="game-rematch-subtext">
-                                  Continue keeps the same lobby code. Fresh creates a new lobby code.
-                              </p>
-                              {myRematchDecision != null && (
-                                  <p className="game-rematch-choice">
-                                      You chose: {
-                                          myRematchDecision === "CONTINUE"
-                                              ? "Rematch (Continue Round Count)"
-                                              : myRematchDecision === "FRESH"
-                                                  ? "Rematch (Fresh Game)"
-                                                  : "No Rematch"
-                                      }.
-                                      Waiting for other players...
-                                  </p>
-                              )}
-                              <div className="game-rematch-actions">
-                                  <Button
-                                      type={myRematchDecision === "CONTINUE" ? "primary" : "default"}
-                                      disabled={myRematchDecision !== null || isSubmittingRematchDecision}
-                                      loading={isSubmittingRematchDecision && myRematchDecision === null}
-                                      onClick={() => submitRematchChoice("CONTINUE")}
-                                  >
-                                      Rematch (Continue)
-                                  </Button>
-                                  <Button
-                                      type={myRematchDecision === "FRESH" ? "primary" : "default"}
-                                      disabled={myRematchDecision !== null || isSubmittingRematchDecision}
-                                      onClick={() => submitRematchChoice("FRESH")}
-                                  >
-                                      Rematch (Fresh)
-                                  </Button>
-                                  <Button
-                                      type={myRematchDecision === "NONE" ? "primary" : "default"}
-                                      danger
-                                      disabled={myRematchDecision !== null || isSubmittingRematchDecision}
-                                      onClick={() => submitRematchChoice("NONE")}
-                                  >
-                                      No Rematch
-                                  </Button>
-                              </div>
-                          </div>
-                      </div>
-                  )}
-
                   {!socketSynced && gameStatus !== "initial_peek" && (
                       <div className="game-rematch-overlay" role="status" aria-live="polite">
                           <div className="game-rematch-card">
@@ -2939,15 +3201,20 @@ const playerListRows = tablePlayerIds.map((id) => {
                   <Scores
                     isOpen={isScoresOpen}
                     onClose={() => setIsScoresOpen(false)}
-                    scores={gameScores}
+                    players={scoreModalPlayers}
                     selfUserId={selfUserId}
+                    totalRounds={finalScoreTotalRounds}
                   />
                   {/* #34: Final Score Screen */}
                   <FinalScoreScreen
-                      isOpen={showFinalScreen}
+                      isOpen={isAwaitingRematchDecision}
                       players={finalScores}
                       selfUserId={selfUserId}
-                      onContinue={() => setShowFinalScreen(false)}
+                      totalRounds={finalScoreTotalRounds}
+                      rematchCountdownSeconds={displayedRematchCountdown}
+                      myRematchDecision={myRematchDecision}
+                      isSubmittingRematchDecision={isSubmittingRematchDecision}
+                      onChooseRematch={submitRematchChoice}
                   />
                   {/* #32A banner or visual cue that stays on screen for everyone once Cabo is called (e.g., "Final Round!") */}
                   {isCaboCalledGlobal && gameStatus !== "round_ended" && gameStatus !== "round_awaiting_rematch" &&  gameStatus !== "cabo_reveal" &&(
@@ -3019,6 +3286,7 @@ const playerListRows = tablePlayerIds.map((id) => {
                                                   ) ? {
                                                       outline: "3px solid #c4827a",
                                                       outlineOffset: "2px",
+                                                      transform: "rotate(180deg)",
                                                   } : {
                                                   transform: "rotate(180deg)",
                                               }}
